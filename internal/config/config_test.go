@@ -347,3 +347,48 @@ func writeConfig(t *testing.T, dir, content string) {
 		t.Fatal(err)
 	}
 }
+
+func TestResolveLogoutSubcommand(t *testing.T) {
+	tests := map[string][]string{
+		"alone":              {"logout"},
+		"flags before":       {"--instance", "https://taiga.example.org", "logout"},
+		"flags after":        {"logout", "--instance", "https://taiga.example.org"},
+		"flags on both ends": {"--config-dir", "DIR", "logout", "--instance", "https://taiga.example.org"},
+	}
+	for name, args := range tests {
+		t.Run(name, func(t *testing.T) {
+			dir := t.TempDir()
+			for i, a := range args {
+				if a == "DIR" {
+					args[i] = dir
+				}
+			}
+			env := envMap{"TAIGA_TUI_CONFIG_DIR": dir}
+
+			cfg, _, err := config.Resolve(args, env.Get)
+
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if !cfg.Logout {
+				t.Error("logout not recognized")
+			}
+			if cfg.ConfigDir != dir {
+				t.Errorf("config dir %q, want %q", cfg.ConfigDir, dir)
+			}
+			if len(args) > 1 && cfg.InstanceURL != "https://taiga.example.org" {
+				t.Errorf("flags around logout ignored, instance %q", cfg.InstanceURL)
+			}
+		})
+	}
+}
+
+func TestResolveRejectsArgumentsAfterLogout(t *testing.T) {
+	env := envMap{"TAIGA_TUI_CONFIG_DIR": t.TempDir()}
+
+	_, _, err := config.Resolve([]string{"logout", "now"}, env.Get)
+
+	if _, ok := errors.AsType[*config.UsageError](err); !ok {
+		t.Fatalf("expected a UsageError, got %v", err)
+	}
+}

@@ -45,6 +45,18 @@ type Config struct {
 	ShowHelp bool
 	// ShowVersion is set by --version.
 	ShowVersion bool
+	// Logout is set by the logout subcommand.
+	Logout bool
+}
+
+// Host returns the host of InstanceURL, e.g. "taiga-fki.ostfalia.de". It
+// names the instance in texts and in the keys of stored tokens.
+func (c Config) Host() string {
+	u, err := url.Parse(c.InstanceURL)
+	if err != nil {
+		return c.InstanceURL
+	}
+	return u.Host
 }
 
 // Warning is a non-fatal configuration problem meant for the status line.
@@ -69,6 +81,7 @@ func Resolve(args []string, getenv func(string) string) (Config, []Warning, erro
 		CheckUpdates: true,
 		ShowHelp:     fl.help,
 		ShowVersion:  fl.version,
+		Logout:       fl.logout,
 	}
 	if cfg.ShowHelp || cfg.ShowVersion {
 		return cfg, nil, nil
@@ -112,6 +125,7 @@ type flags struct {
 	configDir string
 	help      bool
 	version   bool
+	logout    bool
 }
 
 func parseFlags(args []string) (flags, error) {
@@ -125,6 +139,13 @@ func parseFlags(args []string) (flags, error) {
 	fs.BoolVar(&fl.version, "version", false, "")
 	if err := fs.Parse(args); err != nil {
 		return flags{}, &UsageError{err: err}
+	}
+	// Flags may also follow the subcommand.
+	if fs.NArg() > 0 && fs.Arg(0) == "logout" {
+		fl.logout = true
+		if err := fs.Parse(fs.Args()[1:]); err != nil {
+			return flags{}, &UsageError{err: err}
+		}
 	}
 	if fs.NArg() > 0 {
 		return flags{}, &UsageError{err: fmt.Errorf("unexpected argument %q", fs.Arg(0))}
