@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -122,7 +123,7 @@ func TestSuccessfulLoginSavesTokensAndState(t *testing.T) {
 		t.Errorf("saved %+v", sess.savedResult)
 	}
 	want := config.State{UserID: 42, Username: "alice", Login: "alice@example.org", FullName: "Alice Example"}
-	if h.state.saved != want {
+	if !reflect.DeepEqual(h.state.saved, want) {
 		t.Errorf("state.json: got %+v\nwant %+v", h.state.saved, want)
 	}
 	h.golden("picker")
@@ -350,6 +351,7 @@ func newHarness(t *testing.T, sess *fakeSession, st config.State) *harness {
 			State:        state,
 			InitialState: st,
 			Tick:         noTick,
+			Now:          func() time.Time { return today },
 		}),
 	}
 }

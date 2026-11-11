@@ -22,43 +22,59 @@ func (s staticToken) Token(context.Context) (string, error) { return string(s), 
 
 // fixtureServer answers each path with the fixture file named in routes and
 // records the requests it receives.
-type fixtureServer struct {
+func newFixtureServer(t *testing.T, routes map[string]string) *testServer {
+	t.Helper()
+	bodies := map[string]string{}
+	for path, name := range routes {
+		data, err := os.ReadFile(filepath.Join("testdata", name))
+		if err != nil {
+			t.Fatal(err)
+		}
+		bodies[path] = string(data)
+	}
+	return newTestServer(t, bodies)
+}
+
+// testServer answers each path with its body and records the requests it
+// receives.
+type testServer struct {
 	*httptest.Server
 	mu   sync.Mutex
 	reqs []*http.Request
 }
 
-func newFixtureServer(t *testing.T, routes map[string]string) *fixtureServer {
+func newTestServer(t *testing.T, bodies map[string]string) *testServer {
 	t.Helper()
-	fs := &fixtureServer{}
-	fs.Server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		fs.mu.Lock()
-		fs.reqs = append(fs.reqs, r)
-		fs.mu.Unlock()
-		name, ok := routes[r.URL.Path]
+	ts := &testServer{}
+	ts.Server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		ts.mu.Lock()
+		ts.reqs = append(ts.reqs, r)
+		ts.mu.Unlock()
+		body, ok := bodies[r.URL.Path]
 		if !ok {
 			t.Errorf("unexpected request %s %s", r.Method, r.URL)
 			http.NotFound(w, r)
 			return
 		}
-		data, err := os.ReadFile(filepath.Join("testdata", name))
-		if err != nil {
-			t.Error(err)
-		}
-		_, _ = w.Write(data)
+		_, _ = w.Write([]byte(body))
 	}))
-	t.Cleanup(fs.Close)
-	return fs
+	t.Cleanup(ts.Close)
+	return ts
 }
 
-func (fs *fixtureServer) only(t *testing.T) *http.Request {
+func (ts *testServer) requests() []*http.Request {
+	ts.mu.Lock()
+	defer ts.mu.Unlock()
+	return ts.reqs
+}
+
+func (ts *testServer) only(t *testing.T) *http.Request {
 	t.Helper()
-	fs.mu.Lock()
-	defer fs.mu.Unlock()
-	if len(fs.reqs) != 1 {
-		t.Fatalf("got %d requests, want 1", len(fs.reqs))
+	reqs := ts.requests()
+	if len(reqs) != 1 {
+		t.Fatalf("got %d requests, want 1", len(reqs))
 	}
-	return fs.reqs[0]
+	return reqs[0]
 }
 
 func TestMeSendsBearerTokenAndMapsTeamMember(t *testing.T) {
@@ -125,6 +141,13 @@ func TestProjectLoadsBySlugWithStatusesAndMembers(t *testing.T) {
 			{ID: 2953, Name: "Done", Color: "#A8E440", Closed: true},
 			{ID: 2954, Name: "Archived", Color: "#A9AABC", Closed: true, Archived: true},
 		},
+		TaskStatuses: []domain.Status{
+			{ID: 2449, Name: "New", Color: "#70728F"},
+			{ID: 2450, Name: "In progress", Color: "#E47C40"},
+			{ID: 2451, Name: "Ready for test", Color: "#E4CE40"},
+			{ID: 2452, Name: "Closed", Color: "#A8E440", Closed: true},
+			{ID: 2453, Name: "Needs Info", Color: "#5178D3"},
+		},
 		Members: []domain.TeamMember{
 			{ID: 368, Username: "member-3", FullName: "Member 3"},
 			{ID: 386, Username: "member-4", FullName: "Member 4"},
@@ -148,17 +171,17 @@ func TestKanbanLoadsUserStoriesOfActiveStatuses(t *testing.T) {
 	}
 	want := []domain.UserStory{
 		{
-			ID: 10213, Ref: 1, Title: "A", Status: 2951, SprintName: "Sprint 1",
+			ID: 10213, Ref: 1, Title: "A", Status: 2951, Sprint: 1947, SprintName: "Sprint 1", SprintOrder: 1,
 			Assignees: []int64{386, 368}, KanbanOrder: 1794413075166346, Version: 8,
 			Tasks: domain.TaskProgress{Done: 1, Total: 2},
 		},
-		{ID: 10214, Ref: 2, Title: "B", Status: 2949, SprintName: "Sprint 1", KanbanOrder: 1794413084345230, Version: 1},
+		{ID: 10214, Ref: 2, Title: "B", Status: 2949, Sprint: 1947, SprintName: "Sprint 1", SprintOrder: 2, KanbanOrder: 1794413084345230, Version: 1},
 		{
-			ID: 10215, Ref: 3, Title: "C", Status: 2952, SprintName: "Sprint 1",
+			ID: 10215, Ref: 3, Title: "C", Status: 2952, Sprint: 1947, SprintName: "Sprint 1", SprintOrder: 3,
 			Assignees: []int64{386}, KanbanOrder: 1794413108582883, Version: 3,
 			Tasks: domain.TaskProgress{Total: 1},
 		},
-		{ID: 10216, Ref: 4, Title: "D", Status: 2953, SprintName: "Sprint 1", Assignees: []int64{368}, KanbanOrder: 1794413124555477, Version: 1},
+		{ID: 10216, Ref: 4, Title: "D", Status: 2953, Sprint: 1947, SprintName: "Sprint 1", SprintOrder: 4, Assignees: []int64{368}, KanbanOrder: 1794413124555477, Version: 1},
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("got  %+v\nwant %+v", got, want)
@@ -184,11 +207,96 @@ func TestUserStoryLoadsRecordedUserStory(t *testing.T) {
 	// Unlike the list, a single User Story comes with "tasks": [], so its
 	// task progress is unknown here. The recording redacts descriptions.
 	want := domain.UserStory{
-		ID: 10213, Ref: 1, Title: "A", Status: 2951, SprintName: "Sprint 1",
+		ID: 10213, Ref: 1, Title: "A", Status: 2951, Sprint: 1947, SprintName: "Sprint 1", SprintOrder: 1,
 		Assignees: []int64{386, 368}, KanbanOrder: 1794413075166346, Version: 8,
 		Description: "redacted",
 	}
 	if !reflect.DeepEqual(got, want) {
+		t.Errorf("got  %+v\nwant %+v", got, want)
+	}
+}
+
+func TestSprintsLoadsRecordedSprints(t *testing.T) {
+	srv := newFixtureServer(t, map[string]string{"/api/v1/milestones": "milestones.json"})
+
+	got, err := taiga.NewClient(srv.URL, staticToken("t")).Sprints(t.Context(), 496)
+
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []domain.Sprint{{
+		ID: 1947, Name: "Sprint 1",
+		Start: domain.Date{Year: 2026, Month: 11, Day: 11}, Finish: domain.Date{Year: 2026, Month: 11, Day: 25},
+	}}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("got  %+v\nwant %+v", got, want)
+	}
+	if p := srv.only(t).URL.Query().Get("project"); p != "496" {
+		t.Errorf("project=%q", p)
+	}
+}
+
+func TestTaskboardLoadsRecordedSprint(t *testing.T) {
+	srv := newFixtureServer(t, map[string]string{
+		"/api/v1/userstories": "userstories_sprint.json",
+		"/api/v1/tasks":       "tasks_sprint.json",
+	})
+
+	got, err := taiga.NewClient(srv.URL, staticToken("t")).Taskboard(t.Context(), 496, 1947)
+
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Unlike the Kanban Board, the Taskboard keeps E in "Archived". The list
+	// of a Sprint leaves out the Tasks of each User Story.
+	story := func(id int64, ref int, title string, status int64, order, kanban int64, version int, assignees ...int64) domain.UserStory {
+		return domain.UserStory{
+			ID: id, Ref: ref, Title: title, Status: status, Sprint: 1947, SprintName: "Sprint 1",
+			SprintOrder: order, KanbanOrder: kanban, Version: version, Assignees: assignees,
+		}
+	}
+	want := domain.SprintContent{
+		UserStories: []domain.UserStory{
+			story(10213, 1, "A", 2951, 1, 1794413075166346, 8, 386, 368),
+			story(10214, 2, "B", 2949, 2, 1794413084345230, 1),
+			story(10215, 3, "C", 2952, 3, 1794413108582883, 3, 386),
+			story(10216, 4, "D", 2953, 4, 1794413124555477, 1, 368),
+			story(10217, 5, "E", 2954, 5, 1794413135196546, 1, 368),
+		},
+		Tasks: []domain.Task{
+			{ID: 9891, Ref: 6, Title: "1", Status: 2452, UserStory: 10213, Sprint: 1947, Assignee: 368, TaskboardOrder: 1794413287265, Version: 1},
+			{ID: 9892, Ref: 7, Title: "2", Status: 2449, UserStory: 10213, Sprint: 1947, TaskboardOrder: 1794413310301, Version: 1},
+			{ID: 9893, Ref: 8, Title: "3", Status: 2451, UserStory: 10215, Sprint: 1947, Assignee: 386, Version: 2},
+			{ID: 9894, Ref: 9, Title: "4", Status: 2453, UserStory: 10217, Sprint: 1947, Assignee: 368, Version: 3},
+		},
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("got  %+v\nwant %+v", got, want)
+	}
+	for _, req := range srv.requests() {
+		if q := req.URL.Query(); q.Get("project") != "496" || q.Get("milestone") != "1947" {
+			t.Errorf("%s: query %v", req.URL.Path, q)
+		}
+		if p := req.Header.Get("x-disable-pagination"); p != "1" {
+			t.Errorf("%s: x-disable-pagination %q", req.URL.Path, p)
+		}
+	}
+}
+
+func TestTaskLoadsRecordedTask(t *testing.T) {
+	srv := newFixtureServer(t, map[string]string{"/api/v1/tasks/9891": "task.json"})
+
+	got, err := taiga.NewClient(srv.URL, staticToken("t")).Task(t.Context(), 9891)
+
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The recorded Task has no description.
+	want := domain.Task{
+		ID: 9891, Ref: 6, Title: "1", Status: 2452, UserStory: 10213, Sprint: 1947,
+		Assignee: 368, TaskboardOrder: 1794413287265, Version: 1,
+	}
+	if got != want {
 		t.Errorf("got  %+v\nwant %+v", got, want)
 	}
 }
@@ -250,6 +358,113 @@ func TestUserStoryLoadsOneUserStoryWithDescription(t *testing.T) {
 	}
 	if path != "/api/v1/userstories/501" {
 		t.Errorf("path %q", path)
+	}
+}
+
+func TestSprintsMapsClosedAndDateRanges(t *testing.T) {
+	srv := newInlineServer(t, `[
+		{"id": 12, "name": "Sprint 5", "estimated_start": "2026-11-17", "estimated_finish": "2026-11-30", "closed": false, "user_stories": []},
+		{"id": 11, "name": "Sprint 4", "estimated_start": "2026-11-03", "estimated_finish": "2026-11-16", "closed": true, "user_stories": []}]`)
+
+	got, err := taiga.NewClient(srv.URL, staticToken("t")).Sprints(t.Context(), 7)
+
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []domain.Sprint{
+		{ID: 12, Name: "Sprint 5", Start: domain.Date{Year: 2026, Month: 11, Day: 17}, Finish: domain.Date{Year: 2026, Month: 11, Day: 30}},
+		{ID: 11, Name: "Sprint 4", Start: domain.Date{Year: 2026, Month: 11, Day: 3}, Finish: domain.Date{Year: 2026, Month: 11, Day: 16}, Closed: true},
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("got  %+v\nwant %+v", got, want)
+	}
+}
+
+func TestSprintsRejectsMalformedDates(t *testing.T) {
+	srv := newInlineServer(t, `[{"id": 12, "name": "Sprint 5", "estimated_start": "17.11.2026", "estimated_finish": "2026-11-30"}]`)
+
+	_, err := taiga.NewClient(srv.URL, staticToken("t")).Sprints(t.Context(), 7)
+
+	if !errors.Is(err, taiga.ErrUnexpected) {
+		t.Errorf("got %v, want ErrUnexpected", err)
+	}
+}
+
+func TestTaskboardMapsTaskWithoutUserStoryOrAssignee(t *testing.T) {
+	srv := newTestServer(t, map[string]string{
+		"/api/v1/userstories": `[{"id": 501, "ref": 12, "subject": "Checkout", "status": 101, "milestone": 11,
+			"milestone_name": "Sprint 4", "sprint_order": 2, "assigned_to": 43, "assigned_users": [42, 43],
+			"kanban_order": 20, "version": 4}]`,
+		"/api/v1/tasks": `[
+			{"id": 901, "ref": 31, "subject": "Validate card number", "status": 201, "user_story": 501,
+			 "milestone": 11, "assigned_to": 42, "taskboard_order": 5, "version": 2},
+			{"id": 902, "ref": 40, "subject": "Update docs", "status": 202, "user_story": null,
+			 "milestone": 11, "assigned_to": null, "taskboard_order": 1, "version": 1}]`,
+	})
+
+	got, err := taiga.NewClient(srv.URL, staticToken("t")).Taskboard(t.Context(), 7, 11)
+
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := domain.SprintContent{
+		UserStories: []domain.UserStory{{
+			ID: 501, Ref: 12, Title: "Checkout", Status: 101, Sprint: 11, SprintName: "Sprint 4", SprintOrder: 2,
+			Assignees: []int64{43, 42}, KanbanOrder: 20, Version: 4,
+		}},
+		Tasks: []domain.Task{
+			{ID: 901, Ref: 31, Title: "Validate card number", Status: 201, UserStory: 501, Sprint: 11, Assignee: 42, TaskboardOrder: 5, Version: 2},
+			{ID: 902, Ref: 40, Title: "Update docs", Status: 202, Sprint: 11, TaskboardOrder: 1, Version: 1},
+		},
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("got  %+v\nwant %+v", got, want)
+	}
+	for _, req := range srv.requests() {
+		if q := req.URL.Query(); q.Get("project") != "7" || q.Get("milestone") != "11" {
+			t.Errorf("%s: query %v", req.URL.Path, q)
+		}
+		if p := req.Header.Get("x-disable-pagination"); p != "1" {
+			t.Errorf("%s: x-disable-pagination %q", req.URL.Path, p)
+		}
+	}
+}
+
+func TestTaskboardFailsIfTasksFail(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/api/v1/tasks" {
+			w.WriteHeader(http.StatusBadGateway)
+			return
+		}
+		_, _ = w.Write([]byte(`[]`))
+	}))
+	t.Cleanup(srv.Close)
+
+	_, err := taiga.NewClient(srv.URL, staticToken("t")).Taskboard(t.Context(), 7, 11)
+
+	if serr, ok := errors.AsType[*taiga.ServerError](err); !ok || serr.Code != 502 {
+		t.Errorf("got %v, want ServerError 502", err)
+	}
+}
+
+func TestTaskCarriesItsDescription(t *testing.T) {
+	srv := newTestServer(t, map[string]string{
+		"/api/v1/tasks/901": `{"id": 901, "ref": 31, "subject": "Validate card number", "status": 201,
+			"user_story": 501, "milestone": 11, "assigned_to": 42, "taskboard_order": 5, "version": 2,
+			"description": "Luhn check."}`,
+	})
+
+	got, err := taiga.NewClient(srv.URL, staticToken("t")).Task(t.Context(), 901)
+
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := domain.Task{
+		ID: 901, Ref: 31, Title: "Validate card number", Status: 201, UserStory: 501, Sprint: 11,
+		Assignee: 42, TaskboardOrder: 5, Version: 2, Description: "Luhn check.",
+	}
+	if got != want {
+		t.Errorf("got  %+v\nwant %+v", got, want)
 	}
 }
 

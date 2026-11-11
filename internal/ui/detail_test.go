@@ -121,6 +121,9 @@ func TestFailedDescriptionLoadShowsReasonAndRetriesOnNextKey(t *testing.T) {
 
 func TestUserStoryWithoutDescriptionSaysSo(t *testing.T) {
 	h := onKanban(t, 120, 40)
+	for range 4 {
+		h.key("l") // Done: #3, in no Sprint
+	}
 
 	if view := h.plainView(); !strings.Contains(view, "No description") || !strings.Contains(view, "not in a sprint") {
 		t.Errorf("view:\n%s", view)

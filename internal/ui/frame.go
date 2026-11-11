@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"slices"
 	"strings"
 
 	"charm.land/lipgloss/v2"
@@ -36,6 +37,18 @@ func centered(w, h int, lines ...string) string {
 // footer renders the key help line.
 func footer(keys string, w int) string {
 	return fit(" "+faintStyle.Render(keys), w)
+}
+
+// footerOf renders the key help line from keys, leaving out whole entries
+// before the last one, which quits, until the line fits.
+func footerOf(keys []string, w int) string {
+	keys = slices.Clone(keys)
+	line := strings.Join(keys, " · ")
+	for len(keys) > 1 && lipgloss.Width(line)+1 > w {
+		keys = slices.Delete(keys, len(keys)-2, len(keys)-1)
+		line = strings.Join(keys, " · ")
+	}
+	return footer(line, w)
 }
 
 // scrollTop returns the first visible line of a list of n lines in a window

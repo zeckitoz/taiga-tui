@@ -1,0 +1,82 @@
+{
+  "assigned_to": 368,
+  "assigned_to_extra_info": {
+    "big_photo": "https://media.example.invalid/redacted.png",
+    "full_name_display": "Member 3",
+    "gravatar_id": "redacted",
+    "id": 368,
+    "is_active": true,
+    "photo": "https://media.example.invalid/redacted.png",
+    "username": "member-3"
+  },
+  "attachments": [],
+  "blocked_note": "",
+  "blocked_note_html": "",
+  "comment": "",
+  "created_date": "2026-11-11T16:08:07.278Z",
+  "description": "",
+  "description_html": "",
+  "due_date": null,
+  "due_date_reason": "",
+  "due_date_status": "not_set",
+  "external_reference": null,
+  "finished_date": "2026-11-11T16:08:07.288Z",
+  "generated_user_stories": null,
+  "id": 9891,
+  "is_blocked": false,
+  "is_closed": true,
+  "is_iocaine": false,
+  "is_voter": false,
+  "is_watcher": false,
+  "milestone": 1947,
+  "milestone_slug": "sprint-1-109",
+  "modified_date": "2026-11-11T16:08:07.287Z",
+  "neighbors": {
+    "next": {
+      "id": 9892,
+      "ref": 7,
+      "subject": "2"
+    },
+    "previous": null
+  },
+  "owner": 368,
+  "owner_extra_info": {
+    "big_photo": "https://media.example.invalid/redacted.png",
+    "full_name_display": "Member 3",
+    "gravatar_id": "redacted",
+    "id": 368,
+    "is_active": true,
+    "photo": "https://media.example.invalid/redacted.png",
+    "username": "member-3"
+  },
+  "project": 496,
+  "project_extra_info": {
+    "id": 496,
+    "logo_small_url": null,
+    "name": "Test Project",
+    "slug": "test-project"
+  },
+  "ref": 6,
+  "status": 2452,
+  "status_extra_info": {
+    "color": "#A8E440",
+    "is_closed": true,
+    "name": "Closed"
+  },
+  "subject": "1",
+  "tags": [],
+  "taskboard_order": 1794413287265,
+  "total_comments": 0,
+  "total_voters": 0,
+  "total_watchers": 0,
+  "us_order": 1794413287265,
+  "user_story": 10213,
+  "user_story_extra_info": {
+    "epics": null,
+    "id": 10213,
+    "ref": 1,
+    "subject": "A"
+  },
+  "version": 1,
+  "watchers": []
+}

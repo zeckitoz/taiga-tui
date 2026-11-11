@@ -24,11 +24,22 @@ type Kanban struct {
 	tab      int
 	// cursor remembers the selected User Story ID per Status ID.
 	cursor map[int64]int64
-	// generation counts the loads of the User Stories; results of
-	// description loads from an earlier generation are dropped.
-	generation int
 	// descriptions holds the descriptions by User Story ID.
-	descriptions map[int64]description
+	descriptions descriptions
+	// loaded is set once the User Stories are loaded; loadGen counts the
+	// loads of the User Stories, of which only the latest counts.
+	loaded  bool
+	loadGen int
+}
+
+// LoadKanban is the effect of loading the User Stories of a Kanban Board.
+// Its result goes back into UserStoriesLoaded.
+type LoadKanban struct {
+	ProjectID  int64
+	Generation int
+	// Refresh tells that the board is shown and stays visible while it
+	// reloads.
+	Refresh bool
 }
 
 // Tab is one Status tab.
@@ -64,13 +75,50 @@ type Assignee struct {
 // NewKanban returns the Kanban Board of p with the given User Stories, seen
 // by the Team Member with ID me. The first tab is active.
 func NewKanban(p domain.Project, stories []domain.UserStory, me int64) Kanban {
-	k := Kanban{project: p, me: me, cursor: map[int64]int64{}, descriptions: map[int64]description{}}
+	k := UnloadedKanban(p, me)
+	k.loaded = true
+	return k.withStories(stories)
+}
+
+// UnloadedKanban returns the Kanban Board of p, seen by the Team Member with
+// ID me, before its User Stories have loaded. The zero Kanban takes no
+// results.
+func UnloadedKanban(p domain.Project, me int64) Kanban {
+	k := Kanban{project: p, me: me, cursor: map[int64]int64{}}
 	for _, s := range p.UserStoryStatuses {
 		if !s.Archived {
 			k.statuses = append(k.statuses, s)
 		}
 	}
-	return k.withStories(stories)
+	return k
+}
+
+// Loaded reports whether the User Stories are loaded.
+func (k Kanban) Loaded() bool { return k.loaded }
+
+// LoadUserStories returns the effect of loading the User Stories.
+func (k Kanban) LoadUserStories() (Kanban, LoadKanban) {
+	k.loadGen++
+	return k, LoadKanban{ProjectID: k.project.ID, Generation: k.loadGen, Refresh: k.loaded}
+}
+
+// UserStoriesCurrent reports whether the result of load still counts.
+func (k Kanban) UserStoriesCurrent(load LoadKanban) bool {
+	return k.project.ID != 0 && load.ProjectID == k.project.ID && load.Generation == k.loadGen
+}
+
+// UserStoriesLoaded takes the User Stories from the result of load, like
+// Reload once they were loaded before, or returns false if the result no
+// longer counts.
+func (k Kanban) UserStoriesLoaded(load LoadKanban, stories []domain.UserStory) (Kanban, bool) {
+	if !k.UserStoriesCurrent(load) {
+		return k, false
+	}
+	if k.loaded {
+		return k.Reload(stories), true
+	}
+	k.loaded = true
+	return k.withStories(stories), true
 }
 
 // Reload replaces the User Stories, keeping the active tab and the selected
@@ -78,7 +126,7 @@ func NewKanban(p domain.Project, stories []domain.UserStory, me int64) Kanban {
 // they stay visible until LoadDetail has loaded them again.
 func (k Kanban) Reload(stories []domain.UserStory) Kanban {
 	k.cursor = maps.Clone(k.cursor) // never share the map with the receiver
-	k.generation++
+	k.descriptions = k.descriptions.reloaded()
 	return k.withStories(stories)
 }
 
@@ -198,13 +246,19 @@ func (k Kanban) SelectedIndex() int {
 }
 
 func (k Kanban) assignees(s domain.UserStory) []Assignee {
-	if len(s.Assignees) == 0 {
+	return assigneesOf(k.project, k.me, s.Assignees)
+}
+
+// assigneesOf returns the Assignees with the given IDs as members of p seen
+// by the Team Member with ID me.
+func assigneesOf(p domain.Project, me int64, ids []int64) []Assignee {
+	if len(ids) == 0 {
 		return nil
 	}
-	out := make([]Assignee, len(s.Assignees))
-	for i, id := range s.Assignees {
-		out[i] = Assignee{Name: "Unknown member", Initials: "??", Mine: id == k.me}
-		if m, ok := k.project.Member(id); ok {
+	out := make([]Assignee, len(ids))
+	for i, id := range ids {
+		out[i] = Assignee{Name: "Unknown member", Initials: "??", Mine: id == me}
+		if m, ok := p.Member(id); ok {
 			out[i].Name, out[i].Initials = m.FullName, Initials(m.FullName)
 		}
 	}

@@ -133,12 +133,13 @@ func (s statusDTO) domain() domain.Status {
 type projectDTO struct {
 	projectSummaryDTO
 	// Taiga sends null instead of an empty array for these.
-	USStatuses []statusDTO `json:"us_statuses"`
-	Members    []memberDTO `json:"members"`
+	USStatuses   []statusDTO `json:"us_statuses"`
+	TaskStatuses []statusDTO `json:"task_statuses"`
+	Members      []memberDTO `json:"members"`
 }
 
 // Project returns the project with the given slug, including its User Story
-// Statuses in Taiga's order and its members.
+// and Task Statuses in Taiga's order and its members.
 func (c *Client) Project(ctx context.Context, slug string) (domain.Project, error) {
 	var d projectDTO
 	if err := c.get(ctx, "/projects/by_slug", url.Values{"slug": {slug}}, &d); err != nil {
@@ -147,6 +148,9 @@ func (c *Client) Project(ctx context.Context, slug string) (domain.Project, erro
 	p := domain.Project{ProjectSummary: d.domain()}
 	for _, s := range d.USStatuses {
 		p.UserStoryStatuses = append(p.UserStoryStatuses, s.domain())
+	}
+	for _, s := range d.TaskStatuses {
+		p.TaskStatuses = append(p.TaskStatuses, s.domain())
 	}
 	for _, m := range d.Members {
 		p.Members = append(p.Members, m.domain())
@@ -159,7 +163,9 @@ type userStoryDTO struct {
 	Ref           int     `json:"ref"`
 	Subject       string  `json:"subject"`
 	Status        int64   `json:"status"`
+	Milestone     *int64  `json:"milestone"`
 	MilestoneName *string `json:"milestone_name"`
+	SprintOrder   int64   `json:"sprint_order"`
 	Description   string  `json:"description"`
 	AssignedTo    *int64  `json:"assigned_to"`
 	AssignedUsers []int64 `json:"assigned_users"`
@@ -176,9 +182,13 @@ func (u userStoryDTO) domain() domain.UserStory {
 		Ref:         u.Ref,
 		Title:       u.Subject,
 		Status:      u.Status,
+		SprintOrder: u.SprintOrder,
 		KanbanOrder: u.KanbanOrder,
 		Version:     u.Version,
 		Description: u.Description,
+	}
+	if u.Milestone != nil {
+		s.Sprint = *u.Milestone
 	}
 	if u.MilestoneName != nil {
 		s.SprintName = *u.MilestoneName
@@ -204,12 +214,15 @@ func (u userStoryDTO) domain() domain.UserStory {
 // Kanban returns the User Stories of the project's Kanban Board, without
 // those in archived Statuses, in the order Taiga sends them.
 func (c *Client) Kanban(ctx context.Context, projectID int64) ([]domain.UserStory, error) {
-	var dtos []userStoryDTO
-	q := url.Values{
+	return c.userStories(ctx, url.Values{
 		"project":             {strconv.FormatInt(projectID, 10)},
 		"status__is_archived": {"false"},
 		"include_tasks":       {"1"},
-	}
+	})
+}
+
+func (c *Client) userStories(ctx context.Context, q url.Values) ([]domain.UserStory, error) {
+	var dtos []userStoryDTO
 	if err := c.get(ctx, "/userstories", q, &dtos); err != nil {
 		return nil, err
 	}
@@ -226,6 +239,122 @@ func (c *Client) UserStory(ctx context.Context, id int64) (domain.UserStory, err
 	var d userStoryDTO
 	if err := c.get(ctx, "/userstories/"+strconv.FormatInt(id, 10), nil, &d); err != nil {
 		return domain.UserStory{}, err
+	}
+	return d.domain(), nil
+}
+
+// sprintDTO is a Taiga milestone.
+type sprintDTO struct {
+	ID              int64  `json:"id"`
+	Name            string `json:"name"`
+	EstimatedStart  string `json:"estimated_start"`
+	EstimatedFinish string `json:"estimated_finish"`
+	Closed          bool   `json:"closed"`
+}
+
+func (s sprintDTO) domain() (domain.Sprint, error) {
+	start, err := parseDate(s.EstimatedStart)
+	if err != nil {
+		return domain.Sprint{}, err
+	}
+	finish, err := parseDate(s.EstimatedFinish)
+	if err != nil {
+		return domain.Sprint{}, err
+	}
+	return domain.Sprint{ID: s.ID, Name: s.Name, Start: start, Finish: finish, Closed: s.Closed}, nil
+}
+
+// parseDate parses an ISO date like "2026-11-03".
+func parseDate(s string) (domain.Date, error) {
+	t, err := time.Parse(time.DateOnly, s)
+	if err != nil {
+		return domain.Date{}, fmt.Errorf("%w: %w", ErrUnexpected, err)
+	}
+	return domain.DateOf(t), nil
+}
+
+// Sprints returns the Sprints of the project, newest first.
+func (c *Client) Sprints(ctx context.Context, projectID int64) ([]domain.Sprint, error) {
+	var dtos []sprintDTO
+	q := url.Values{"project": {strconv.FormatInt(projectID, 10)}}
+	if err := c.get(ctx, "/milestones", q, &dtos); err != nil {
+		return nil, err
+	}
+	out := make([]domain.Sprint, len(dtos))
+	for i, d := range dtos {
+		s, err := d.domain()
+		if err != nil {
+			return nil, err
+		}
+		out[i] = s
+	}
+	return out, nil
+}
+
+type taskDTO struct {
+	ID             int64  `json:"id"`
+	Ref            int    `json:"ref"`
+	Subject        string `json:"subject"`
+	Status         int64  `json:"status"`
+	UserStory      *int64 `json:"user_story"`
+	Milestone      *int64 `json:"milestone"`
+	AssignedTo     *int64 `json:"assigned_to"`
+	TaskboardOrder int64  `json:"taskboard_order"`
+	Version        int    `json:"version"`
+	Description    string `json:"description"`
+}
+
+func (t taskDTO) domain() domain.Task {
+	return domain.Task{
+		ID:             t.ID,
+		Ref:            t.Ref,
+		Title:          t.Subject,
+		Status:         t.Status,
+		UserStory:      deref(t.UserStory),
+		Sprint:         deref(t.Milestone),
+		Assignee:       deref(t.AssignedTo),
+		TaskboardOrder: t.TaskboardOrder,
+		Version:        t.Version,
+		Description:    t.Description,
+	}
+}
+
+// deref returns the ID p points to, 0 for null.
+func deref(p *int64) int64 {
+	if p == nil {
+		return 0
+	}
+	return *p
+}
+
+// Taskboard returns the User Stories and Tasks of the Sprint with the given
+// ID in the project, in the order Taiga sends them and without descriptions.
+func (c *Client) Taskboard(ctx context.Context, projectID, sprintID int64) (domain.SprintContent, error) {
+	q := url.Values{
+		"project":   {strconv.FormatInt(projectID, 10)},
+		"milestone": {strconv.FormatInt(sprintID, 10)},
+	}
+	userStories, err := c.userStories(ctx, q)
+	if err != nil {
+		return domain.SprintContent{}, err
+	}
+	var dtos []taskDTO
+	if err := c.get(ctx, "/tasks", q, &dtos); err != nil {
+		return domain.SprintContent{}, err
+	}
+	content := domain.SprintContent{UserStories: userStories, Tasks: make([]domain.Task, len(dtos))}
+	for i, d := range dtos {
+		content.Tasks[i] = d.domain()
+	}
+	return content, nil
+}
+
+// Task returns the Task with the given ID, including its description, which
+// the lists leave out.
+func (c *Client) Task(ctx context.Context, id int64) (domain.Task, error) {
+	var d taskDTO
+	if err := c.get(ctx, "/tasks/"+strconv.FormatInt(id, 10), nil, &d); err != nil {
+		return domain.Task{}, err
 	}
 	return d.domain(), nil
 }

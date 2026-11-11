@@ -13,7 +13,10 @@ import (
 
 // aliceState is the state of a Team Member whose session resumes.
 func aliceState(defaultProject int64) config.State {
-	return config.State{UserID: 42, Username: "alice", Login: "alice", FullName: "Alice Example", DefaultProject: defaultProject}
+	return config.State{
+		UserID: 42, Username: "alice", Login: "alice", FullName: "Alice Example",
+		DefaultProject: defaultProject, LastBoard: config.BoardKanban,
+	}
 }
 
 // resumed returns a harness whose stored session is valid, on the given instance.
