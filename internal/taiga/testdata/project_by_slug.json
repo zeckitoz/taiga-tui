@@ -1,0 +1,24 @@
+{
+  "id": 7,
+  "name": "Web Shop",
+  "slug": "alice-web-shop",
+  "is_backlog_activated": true,
+  "is_kanban_activated": true,
+  "my_permissions": ["view_us", "modify_us", "view_tasks", "modify_task"],
+  "us_statuses": [
+    {"id": 101, "name": "New", "slug": "new", "order": 1, "is_closed": false, "is_archived": false, "color": "#70728F", "wip_limit": null, "project_id": 7},
+    {"id": 102, "name": "In progress", "slug": "in-progress", "order": 2, "is_closed": false, "is_archived": false, "color": "#E47C40", "wip_limit": 3, "project_id": 7},
+    {"id": 103, "name": "Done", "slug": "done", "order": 3, "is_closed": true, "is_archived": false, "color": "#A8E440", "wip_limit": null, "project_id": 7},
+    {"id": 104, "name": "Archived", "slug": "archived", "order": 4, "is_closed": true, "is_archived": true, "color": "#5C3566", "wip_limit": null, "project_id": 7}
+  ],
+  "task_statuses": [
+    {"id": 201, "name": "New", "slug": "new", "order": 1, "is_closed": false, "color": "#70728F", "project_id": 7}
+  ],
+  "swimlanes": null,
+  "default_swimlane": null,
+  "members": [
+    {"id": 42, "username": "alice", "full_name": "Alice Example", "full_name_display": "Alice Example", "photo": null, "color": "#FC8EAC", "is_active": true, "role": 1, "role_name": "Product Owner", "gravatar_id": "x"},
+    {"id": 43, "username": "bkoch", "full_name": "", "full_name_display": "bkoch", "photo": null, "color": "#8EFCAC", "is_active": true, "role": 2, "role_name": "Developer", "gravatar_id": "y"}
+  ],
+  "milestones": null
+}

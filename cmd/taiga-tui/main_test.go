@@ -121,6 +121,9 @@ func TestStartRunsTUIWithWarningsAndState(t *testing.T) {
 	if got.Host != "taiga-fki.ostfalia.de" {
 		t.Errorf("host %q", got.Host)
 	}
+	if got.Session == nil || got.Taiga == nil {
+		t.Error("session or Taiga client not wired")
+	}
 	if want := []config.Warning{`Unknown key "colors" in config.toml`}; !slices.Equal(got.Warnings, want) {
 		t.Errorf("warnings %q, want %q", got.Warnings, want)
 	}

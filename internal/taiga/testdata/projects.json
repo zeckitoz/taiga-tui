@@ -1,0 +1,22 @@
+[
+  {
+    "id": 7,
+    "name": "Web Shop",
+    "slug": "alice-web-shop",
+    "is_backlog_activated": true,
+    "is_kanban_activated": true,
+    "i_am_member": true,
+    "my_permissions": ["view_us", "modify_us", "view_tasks", "modify_task"],
+    "default_swimlane": null
+  },
+  {
+    "id": 9,
+    "name": "Archive",
+    "slug": "archive-9",
+    "is_backlog_activated": false,
+    "is_kanban_activated": false,
+    "i_am_member": true,
+    "my_permissions": ["view_us"],
+    "default_swimlane": null
+  }
+]

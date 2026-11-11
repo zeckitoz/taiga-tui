@@ -26,6 +26,8 @@ type State struct {
 	Login string `json:"login,omitempty"`
 	// FullName is the display name of the Team Member.
 	FullName string `json:"full_name,omitempty"`
+	// DefaultProject is the ID of the project opened at start, 0 if none.
+	DefaultProject int64 `json:"default_project,omitempty"`
 }
 
 // LoggedIn returns the state after a successful login of m with the given

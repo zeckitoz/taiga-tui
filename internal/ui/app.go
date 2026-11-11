@@ -5,13 +5,16 @@ package ui
 import (
 	"context"
 	"errors"
+	"slices"
 	"strings"
 	"time"
 
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 
+	"github.com/zeckitoz/taiga-tui/internal/board"
 	"github.com/zeckitoz/taiga-tui/internal/config"
+	"github.com/zeckitoz/taiga-tui/internal/domain"
 	"github.com/zeckitoz/taiga-tui/internal/session"
 	"github.com/zeckitoz/taiga-tui/internal/taiga"
 )
@@ -21,6 +24,15 @@ type Session interface {
 	Resume(username string) bool
 	Authenticate(ctx context.Context, login, password string) (taiga.LoginResult, error)
 	Save(res taiga.LoginResult) (session.Saved, error)
+}
+
+// Taiga is the part of the Taiga API the UI uses. taiga.Client implements it
+// for real, taigafake.Fake in tests.
+type Taiga interface {
+	Me(ctx context.Context) (domain.TeamMember, error)
+	Projects(ctx context.Context, memberID int64) ([]domain.ProjectSummary, error)
+	Project(ctx context.Context, slug string) (domain.Project, error)
+	Kanban(ctx context.Context, projectID int64) ([]domain.UserStory, error)
 }
 
 // StateStore persists state.json.
@@ -33,6 +45,7 @@ type Deps struct {
 	// Host names the instance in texts, e.g. "taiga-fki.ostfalia.de".
 	Host         string
 	Session      Session
+	Taiga        Taiga
 	State        StateStore
 	InitialState config.State
 	// Warnings are shown in the status line from the start.
@@ -46,7 +59,10 @@ type screen int
 const (
 	screenStarting screen = iota
 	screenLogin
-	screenLoggedIn
+	screenLoading
+	screenFailed
+	screenPicker
+	screenBoard
 )
 
 // keyringSlowDelay is how long the start may take before "Waiting for system
@@ -54,6 +70,10 @@ const (
 const keyringSlowDelay = 250 * time.Millisecond
 
 const waitingForKeyring = "Waiting for system keyring…"
+
+// hintDefaultGone is shown on the project picker when the default project is
+// not in the project list any more.
+const hintDefaultGone = "Your default project is no longer available"
 
 type (
 	resumeDoneMsg  struct{ ok bool }
@@ -69,12 +89,31 @@ type (
 		saved  session.Saved
 		err    error
 	}
+	meLoadedMsg struct {
+		me  domain.TeamMember
+		err error
+	}
+	projectsLoadedMsg struct {
+		projects []domain.ProjectSummary
+		err      error
+	}
+	projectLoadedMsg struct {
+		project domain.Project
+		err     error
+	}
+	kanbanLoadedMsg struct {
+		projectID int64
+		stories   []domain.UserStory
+		err       error
+	}
 )
 
 // statusMsg is one entry of the status line.
 type statusMsg struct {
 	text  string
 	isErr bool
+	// transient entries disappear with the next action or load.
+	transient bool
 }
 
 // App is the root model.
@@ -83,10 +122,28 @@ type App struct {
 	state         config.State
 	screen        screen
 	form          loginForm
-	startSpinner  spinner
+	spinner       spinner
 	keyringIsSlow bool
 	status        []statusMsg
 	width, height int
+
+	// loading is the text next to the spinner on screenLoading.
+	loading string
+	// failure and retry describe a failed load on screenFailed.
+	failure string
+	retry   func(App) (App, tea.Cmd)
+
+	me       domain.TeamMember
+	projects []domain.ProjectSummary
+	picker   picker
+	project  domain.Project
+	// picked is set when the Team Member chose project in the picker
+	// rather than it being opened at startup.
+	picked bool
+	kanban board.Kanban
+	// hasKanban is set once the Kanban Board of project is loaded.
+	hasKanban bool
+	kanbanTop int
 }
 
 // New returns the App. It starts by looking for a stored session.
@@ -94,7 +151,8 @@ func New(d Deps) App {
 	if d.Tick == nil {
 		d.Tick = tea.Tick
 	}
-	a := App{deps: d, state: d.InitialState, startSpinner: spinner{tick: d.Tick}}
+	a := App{deps: d, state: d.InitialState, spinner: spinner{tick: d.Tick}}
+	a.me = domain.TeamMember{ID: a.state.UserID, Username: a.state.Username, FullName: a.state.FullName}
 	for _, w := range d.Warnings {
 		a.status = append(a.status, statusMsg{text: string(w)})
 	}
@@ -116,6 +174,9 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		a.width, a.height = msg.Width, msg.Height
 		a.form.setWidth(msg.Width)
+		a.picker.setWidth(msg.Width)
+		a.picker.scroll(a.pickerListHeight())
+		a.scrollKanban()
 		return a, nil
 	case tea.KeyPressMsg:
 		if msg.String() == "ctrl+c" {
@@ -126,17 +187,13 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return a, nil
 		}
 		a.keyringIsSlow = true
-		return a, a.startSpinner.start()
+		return a, a.spinner.start()
 	case resumeDoneMsg:
-		a.startSpinner.stop()
+		a.spinner.stop()
 		if msg.ok {
-			a.screen = screenLoggedIn
-			return a, nil
+			return a.loadMe()
 		}
-		a.screen = screenLogin
-		a.form = newLoginForm(a.deps.Host, a.state.Login, a.deps.Tick)
-		a.form.setWidth(a.width)
-		return a, nil
+		return a.showLogin(), nil
 	case authDoneMsg:
 		if msg.err != nil {
 			a.form.fail(loginErrorText(a.deps.Host, msg.err))
@@ -155,22 +212,73 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			a.form.fail("Couldn't save login: " + msg.err.Error())
 			return a, nil
 		}
-		return a.loggedIn(msg), nil
+		return a.loggedIn(msg).loadMe()
+	case meLoadedMsg:
+		if msg.err != nil {
+			return a.failed(msg.err, a.cannotReach(), App.loadMe)
+		}
+		a.me = msg.me
+		return a.loadProjects()
+	case projectsLoadedMsg:
+		if msg.err != nil {
+			return a.failed(msg.err, a.cannotReach(), App.loadProjects)
+		}
+		return a.projectsLoaded(msg.projects)
+	case projectLoadedMsg:
+		if msg.err != nil {
+			slug, what := a.project.Slug, a.cannotReach()
+			if a.picked {
+				what = "Couldn't load " + a.project.Name
+			}
+			return a.failed(msg.err, what, func(a App) (App, tea.Cmd) { return a.loadProject(slug) })
+		}
+		return a.projectLoaded(msg.project)
+	case kanbanLoadedMsg:
+		return a.kanbanLoaded(msg)
 	}
 
 	switch a.screen {
-	case screenStarting:
+	case screenStarting, screenLoading:
 		if tick, ok := msg.(spinnerTickMsg); ok {
-			return a, a.startSpinner.update(tick)
+			return a, a.spinner.update(tick)
 		}
 	case screenLogin:
 		return a.updateLogin(msg)
-	case screenLoggedIn:
-		if key, ok := msg.(tea.KeyPressMsg); ok && key.String() == "q" {
-			return a, tea.Quit
+	case screenFailed:
+		if key, ok := msg.(tea.KeyPressMsg); ok {
+			switch key.String() {
+			case "r":
+				return a.retry(a)
+			case "q":
+				return a, tea.Quit
+			}
 		}
+	case screenPicker:
+		return a.clearTransient(msg).updatePicker(msg)
+	case screenBoard:
+		return a.clearTransient(msg).updateBoard(msg)
 	}
 	return a, nil
+}
+
+// clearTransient drops transient status entries when msg is a key press.
+func (a App) clearTransient(msg tea.Msg) App {
+	if _, ok := msg.(tea.KeyPressMsg); !ok {
+		return a
+	}
+	return a.withoutTransient()
+}
+
+func (a App) withoutTransient() App {
+	a.status = slices.DeleteFunc(slices.Clone(a.status), func(s statusMsg) bool { return s.transient })
+	return a
+}
+
+func (a App) showLogin() App {
+	a.screen = screenLogin
+	a.form = newLoginForm(a.deps.Host, a.state.Login, a.deps.Tick)
+	a.form.setWidth(a.width)
+	return a
 }
 
 func (a App) updateLogin(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -194,18 +302,242 @@ func (a App) updateLogin(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (a App) loggedIn(msg saveDoneMsg) App {
-	a.screen = screenLoggedIn
 	a.form = loginForm{} // drop the password
 	a.state = a.state.LoggedIn(msg.result.Member, msg.login)
+	a.me = msg.result.Member
 	if msg.saved.File != "" {
 		a.status = append(a.status, statusMsg{
 			text: "System keyring unavailable, login saved in " + msg.saved.File,
 		})
 	}
+	return a.saveState()
+}
+
+// saveState writes state.json and reports a failure in the status line.
+func (a App) saveState() App {
 	if err := a.deps.State.Save(a.state); err != nil {
 		a.status = append(a.status, statusMsg{text: "Couldn't save settings: " + err.Error(), isErr: true})
 	}
 	return a
+}
+
+// startLoading shows text next to a spinner while cmd runs.
+func (a App) startLoading(text string, cmd tea.Cmd) (App, tea.Cmd) {
+	a.screen = screenLoading
+	a.loading = text
+	return a, tea.Batch(a.spinner.start(), cmd)
+}
+
+// failed handles a failed load: an expired session leads to the login,
+// anything else to a full-page error "<what>: <reason>" from which retry
+// repeats the load.
+func (a App) failed(err error, what string, retry func(App) (App, tea.Cmd)) (tea.Model, tea.Cmd) {
+	a.spinner.stop()
+	if errors.Is(err, taiga.ErrSessionExpired) {
+		return a.showLogin(), nil
+	}
+	a.screen = screenFailed
+	a.failure = what + ": " + reason(err)
+	a.retry = retry
+	return a, nil
+}
+
+// cannotReach introduces failures of the startup loads.
+func (a App) cannotReach() string { return "Cannot reach " + a.deps.Host }
+
+func (a App) loadMe() (App, tea.Cmd) {
+	api := a.deps.Taiga
+	return a.startLoading("Loading projects…", func() tea.Msg {
+		me, err := api.Me(context.Background())
+		return meLoadedMsg{me: me, err: err}
+	})
+}
+
+func (a App) loadProjects() (App, tea.Cmd) {
+	api, id := a.deps.Taiga, a.me.ID
+	return a.startLoading("Loading projects…", func() tea.Msg {
+		ps, err := api.Projects(context.Background(), id)
+		return projectsLoadedMsg{projects: ps, err: err}
+	})
+}
+
+// projectsLoaded opens the default project or, if there is none, the only
+// project. Otherwise it shows the picker.
+func (a App) projectsLoaded(projects []domain.ProjectSummary) (App, tea.Cmd) {
+	a.spinner.stop()
+	a.projects = projects
+	hint := ""
+	if id := a.state.DefaultProject; id != 0 {
+		i := indexOfProject(projects, id)
+		switch {
+		case i < 0:
+			hint = hintDefaultGone
+		case projects[i].HasBoards():
+			return a.openProject(projects[i], false)
+		default:
+			hint = projects[i].Name + " has no boards enabled"
+		}
+	}
+	if len(projects) == 1 && projects[0].HasBoards() {
+		return a.openProject(projects[0], false)
+	}
+	return a.showPicker(hint), nil
+}
+
+func (a App) showPicker(hint string) App {
+	a.screen = screenPicker
+	a.picker = newPicker(a.projects, hint)
+	a.picker.setWidth(a.width)
+	a.picker.scroll(a.pickerListHeight())
+	return a
+}
+
+func indexOfProject(ps []domain.ProjectSummary, id int64) int {
+	for i, p := range ps {
+		if p.ID == id {
+			return i
+		}
+	}
+	return -1
+}
+
+// openProject loads p, which becomes the default project once it loaded.
+// picked tells whether the Team Member chose it in the picker.
+func (a App) openProject(p domain.ProjectSummary, picked bool) (App, tea.Cmd) {
+	a.project = domain.Project{ProjectSummary: p}
+	a.picked = picked
+	a.hasKanban = false
+	return a.loadProject(p.Slug)
+}
+
+func (a App) loadProject(slug string) (App, tea.Cmd) {
+	api, name := a.deps.Taiga, a.project.Name
+	return a.startLoading("Loading "+name+"…", func() tea.Msg {
+		p, err := api.Project(context.Background(), slug)
+		return projectLoadedMsg{project: p, err: err}
+	})
+}
+
+func (a App) projectLoaded(p domain.Project) (App, tea.Cmd) {
+	a.project = p
+	if a.state.DefaultProject != p.ID {
+		a.state.DefaultProject = p.ID
+		a = a.saveState()
+	}
+	if !p.KanbanEnabled {
+		// The Taskboard comes with a later ticket; until then the board
+		// screen explains why there is nothing to show.
+		a.spinner.stop()
+		a.screen = screenBoard
+		return a, nil
+	}
+	return a.loadKanban()
+}
+
+func (a App) loadKanban() (App, tea.Cmd) {
+	api, id := a.deps.Taiga, a.project.ID
+	load := func() tea.Msg {
+		stories, err := api.Kanban(context.Background(), id)
+		return kanbanLoadedMsg{projectID: id, stories: stories, err: err}
+	}
+	if a.hasKanban {
+		// A refresh keeps the board visible.
+		return a, load
+	}
+	return a.startLoading("Loading "+a.project.Name+"…", load)
+}
+
+func (a App) kanbanLoaded(msg kanbanLoadedMsg) (tea.Model, tea.Cmd) {
+	if msg.projectID != a.project.ID {
+		return a, nil // a load of a project that is no longer open
+	}
+	if msg.err != nil {
+		if a.hasKanban && !errors.Is(msg.err, taiga.ErrSessionExpired) {
+			a = a.withoutTransient()
+			a.status = append(a.status, statusMsg{text: "Couldn't refresh: " + reason(msg.err), isErr: true, transient: true})
+			return a, nil
+		}
+		return a.failed(msg.err, "Couldn't load Kanban Board", App.loadKanban)
+	}
+	a = a.withoutTransient()
+	a.spinner.stop()
+	if a.hasKanban {
+		a.kanban = a.kanban.Reload(msg.stories)
+	} else {
+		a.kanban = board.NewKanban(a.project, msg.stories, a.me.ID)
+		a.kanbanTop = 0
+		a.hasKanban = true
+	}
+	a.screen = screenBoard
+	a.scrollKanban()
+	return a, nil
+}
+
+func (a App) updatePicker(msg tea.Msg) (tea.Model, tea.Cmd) {
+	if len(a.projects) == 0 {
+		if key, ok := msg.(tea.KeyPressMsg); ok {
+			switch key.String() {
+			case "r":
+				return a.loadProjects()
+			case "q":
+				return a, tea.Quit
+			}
+		}
+		return a, nil
+	}
+	action, cmd := a.picker.update(msg, a.pickerListHeight())
+	switch action {
+	case pickerQuit:
+		return a, tea.Quit
+	case pickerChoose:
+		p, _ := a.picker.chosen()
+		return a.openProject(p, true)
+	}
+	return a, cmd
+}
+
+func (a App) updateBoard(msg tea.Msg) (tea.Model, tea.Cmd) {
+	key, ok := msg.(tea.KeyPressMsg)
+	if !ok {
+		return a, nil
+	}
+	switch key.String() {
+	case "q":
+		return a, tea.Quit
+	case "p":
+		if !a.project.KanbanEnabled {
+			// Until the Taskboard exists, this is the only way out of a
+			// project without a Kanban Board.
+			return a.showPicker(""), nil
+		}
+	case "r":
+		if a.hasKanban {
+			return a.loadKanban()
+		}
+	case "left", "h":
+		a.kanban = a.kanban.PrevTab()
+	case "right", "l":
+		a.kanban = a.kanban.NextTab()
+	case "up", "k":
+		a.kanban = a.kanban.CursorUp()
+	case "down", "j":
+		a.kanban = a.kanban.CursorDown()
+	}
+	a.scrollKanban()
+	return a, nil
+}
+
+// scrollKanban keeps the selected User Story visible.
+func (a *App) scrollKanban() {
+	n := len(a.kanban.Rows())
+	a.kanbanTop = scrollTop(a.kanbanTop, a.kanban.SelectedIndex(), n, a.bodyHeight()-kanbanChromeLines)
+}
+
+func (a App) pickerListHeight() int { return a.bodyHeight() - pickerChromeLines }
+
+// bodyHeight is the height between header and status line plus footer.
+func (a App) bodyHeight() int {
+	return a.height - 2 - len(a.statusLines(1))
 }
 
 // View implements tea.Model.
@@ -213,43 +545,96 @@ func (a App) View() tea.View {
 	if a.width == 0 {
 		return tea.View{AltScreen: true}
 	}
-	var body string
+	var content string
 	switch a.screen {
-	case screenStarting:
-		if a.keyringIsSlow {
-			body = a.startSpinner.view() + " " + waitingForKeyring
-		}
-	case screenLogin:
-		body = a.form.view()
-	case screenLoggedIn:
-		body = "Logged in as " + titleStyle.Render(a.state.FullName) + "\n\n" + faintStyle.Render("q quit")
-	}
-	status := a.statusLine()
-	height := a.height - lipgloss.Height(status)
-	if status == "" {
-		height = a.height
-	}
-	content := lipgloss.Place(a.width, max(0, height), lipgloss.Center, lipgloss.Center, body)
-	if status != "" {
-		content += "\n" + status
+	case screenPicker:
+		content = a.framed("Select project", a.pickerBody(), a.pickerFooter())
+	case screenBoard:
+		path := projectStyle.Render(a.project.Name) + faintStyle.Render(" › ") + titleStyle.Render("Kanban Board")
+		content = a.framed(path, a.boardBody(), footer(a.boardKeys(), a.width))
+	default:
+		content = a.plain()
 	}
 	v := tea.NewView(content)
 	v.AltScreen = true
 	return v
 }
 
-func (a App) statusLine() string {
-	lines := make([]string, 0, len(a.status))
+// plain renders the screens without header and footer, centered.
+func (a App) plain() string {
+	var body []string
+	switch a.screen {
+	case screenStarting:
+		if a.keyringIsSlow {
+			body = []string{a.spinner.view() + " " + waitingForKeyring}
+		}
+	case screenLogin:
+		body = []string{a.form.view()}
+	case screenLoading:
+		body = []string{a.spinner.view() + " " + a.loading}
+	case screenFailed:
+		body = []string{errorStyle.Render(a.failure), "", faintStyle.Render("r retry · q quit")}
+	}
+	status := a.statusLines(0)
+	return strings.Join(append([]string{centered(a.width, a.height-len(status), body...)}, status...), "\n")
+}
+
+// framed renders header, body, status line and footer.
+func (a App) framed(path, body, foot string) string {
+	header := spread(" "+path, a.me.FullName+" ", a.width)
+	lines := []string{header, body}
+	lines = append(lines, a.statusLines(1)...)
+	lines = append(lines, foot)
+	return strings.Join(lines, "\n")
+}
+
+func (a App) pickerBody() string {
+	h := a.bodyHeight()
+	if len(a.projects) == 0 {
+		return centered(a.width, h,
+			faintStyle.Render("You are not a member of any project on "+a.deps.Host), "",
+			faintStyle.Render("r reload · q quit"))
+	}
+	return a.picker.view(a.width, h)
+}
+
+func (a App) pickerFooter() string {
+	if len(a.projects) == 0 {
+		return footer("r reload · q quit", a.width)
+	}
+	return footer(pickerKeys, a.width)
+}
+
+func (a App) boardBody() string {
+	h := a.bodyHeight()
+	if !a.project.KanbanEnabled {
+		return centered(a.width, h, faintStyle.Render("Kanban is disabled in "+a.project.Name))
+	}
+	return renderKanban(a.kanban, a.kanbanTop, a.width, h)
+}
+
+func (a App) boardKeys() string {
+	if !a.project.KanbanEnabled {
+		return "p projects · q quit"
+	}
+	return kanbanKeys
+}
+
+// statusLines renders the status line, indented by indent cells. Long
+// entries wrap rather than being cut, so that a long path stays readable.
+func (a App) statusLines(indent int) []string {
+	var lines []string
+	pad := strings.Repeat(" ", indent)
 	for _, s := range a.status {
-		// Wrap rather than cut, so a long path stays readable.
-		text := lipgloss.Wrap(s.text, a.width, " /")
+		style := warnStyle
 		if s.isErr {
-			lines = append(lines, errorStyle.Render(text))
-		} else {
-			lines = append(lines, warnStyle.Render(text))
+			style = errorStyle
+		}
+		for _, l := range strings.Split(lipgloss.Wrap(s.text, max(1, a.width-2*indent), " /"), "\n") {
+			lines = append(lines, pad+style.Render(l))
 		}
 	}
-	return strings.Join(lines, "\n")
+	return lines
 }
 
 // loginErrorText is the text the login dialog shows for err.

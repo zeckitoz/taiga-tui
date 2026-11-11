@@ -42,6 +42,8 @@ type Manager struct {
 	keyring     CredentialStore
 	keyringDown bool // set on the first keyring failure, for the rest of the run
 	file        *FileStore
+	// username is the Team Member whose session is active, set by Resume and Save.
+	username string
 }
 
 // NewManager returns a Manager.
@@ -90,6 +92,7 @@ func (m *Manager) Save(res taiga.LoginResult) (Saved, error) {
 			for _, e := range entries {
 				_ = m.file.Delete(e.key)
 			}
+			m.username = username
 			return Saved{}, nil
 		}
 		m.keyringDown = true
@@ -100,6 +103,7 @@ func (m *Manager) Save(res taiga.LoginResult) (Saved, error) {
 			return Saved{}, err
 		}
 	}
+	m.username = username
 	return Saved{File: m.file.Path()}, nil
 }
 
@@ -110,12 +114,34 @@ func (m *Manager) Resume(username string) bool {
 	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	token, err := m.get(m.key(username, accessToken))
-	if err != nil {
+	if _, ok := m.validAccessToken(username); !ok {
 		return false
 	}
+	m.username = username
+	return true
+}
+
+// Token returns the unexpired access token of the active session, which
+// Resume or Save started. It implements taiga.TokenSource.
+func (m *Manager) Token(context.Context) (string, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if token, ok := m.validAccessToken(m.username); ok {
+		return token, nil
+	}
+	return "", taiga.ErrSessionExpired
+}
+
+func (m *Manager) validAccessToken(username string) (string, bool) {
+	if username == "" {
+		return "", false
+	}
+	token, err := m.get(m.key(username, accessToken))
+	if err != nil {
+		return "", false
+	}
 	exp, ok := expiry(token)
-	return ok && m.now().Before(exp)
+	return token, ok && m.now().Before(exp)
 }
 
 // Logout deletes the tokens of username from the keyring and every token of

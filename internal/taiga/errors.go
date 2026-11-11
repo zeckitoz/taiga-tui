@@ -14,6 +14,12 @@ var (
 	ErrUnreachable = errors.New("no connection")
 	// ErrTimeout means the request did not finish within the request timeout.
 	ErrTimeout = errors.New("timed out")
+	// ErrSessionExpired means Taiga rejected the access token.
+	ErrSessionExpired = errors.New("session expired")
+	// ErrConflict means the item was changed by someone else since it was loaded.
+	ErrConflict = errors.New("changed by someone else")
+	// ErrNotFound means the requested item does not exist (any more).
+	ErrNotFound = errors.New("not found")
 	// ErrUnexpected means the response could not be understood.
 	ErrUnexpected = errors.New("unexpected response from server")
 )

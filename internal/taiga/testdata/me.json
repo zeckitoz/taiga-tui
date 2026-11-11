@@ -1,0 +1,11 @@
+{
+  "id": 42,
+  "username": "alice",
+  "full_name": "Alice Example",
+  "full_name_display": "Alice Example",
+  "email": "alice@example.invalid",
+  "photo": null,
+  "lang": "",
+  "timezone": "",
+  "is_active": true
+}
