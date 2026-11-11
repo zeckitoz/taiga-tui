@@ -7,8 +7,14 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"time"
+
+	tea "charm.land/bubbletea/v2"
 
 	"github.com/zeckitoz/taiga-tui/internal/config"
+	"github.com/zeckitoz/taiga-tui/internal/session"
+	"github.com/zeckitoz/taiga-tui/internal/taiga"
+	"github.com/zeckitoz/taiga-tui/internal/ui"
 	"github.com/zeckitoz/taiga-tui/internal/version"
 )
 
@@ -42,19 +48,62 @@ func run(args []string, getenv func(string) string, stdout, stderr io.Writer) in
 		return 0
 	}
 
-	// The status line takes over these warnings once the UI exists.
+	stateFile := config.NewStateFile(cfg.ConfigDir)
+	state, stateWarnings := stateFile.Load()
+	warnings = append(warnings, stateWarnings...)
+	host := cfg.Host()
+	sess := session.NewManager(session.Options{
+		Host:    host,
+		Auth:    taiga.NewAuthAPI(cfg.InstanceURL),
+		Keyring: session.WithTimeout(session.NewKeyringStore(), session.KeyringTimeout),
+		File:    session.NewFileStore(cfg.ConfigDir),
+		Now:     time.Now,
+	})
+
+	if cfg.Logout {
+		return logout(sess, host, state, warnings, stdout, stderr)
+	}
+
+	err = runTUI(ui.Deps{
+		Host:         host,
+		Session:      sess,
+		State:        stateFile,
+		InitialState: state,
+		Warnings:     warnings,
+	})
+	if err != nil {
+		fmt.Fprintf(stderr, "taiga-tui: %v\n", err)
+		return 1
+	}
+	return 0
+}
+
+// runTUI runs the terminal UI until the Team Member quits. Tests replace it.
+var runTUI = func(d ui.Deps) error {
+	_, err := tea.NewProgram(ui.New(d)).Run()
+	return err
+}
+
+// logout deletes the stored tokens of the instance from the keyring and the
+// credentials file. The Team Member's username comes from state.json, and
+// config.toml and state.json stay as they are.
+func logout(sess *session.Manager, host string, state config.State, warnings []config.Warning, stdout, stderr io.Writer) int {
 	for _, w := range warnings {
 		fmt.Fprintf(stderr, "Warning: %s\n", w)
 	}
-	// Placeholder until the UI arrives.
-	fmt.Fprintf(stdout, "taiga-tui is not usable yet.\nInstance:         %s\nConfig directory: %s\n", cfg.InstanceURL, cfg.ConfigDir)
+	if err := sess.Logout(state.Username); err != nil {
+		fmt.Fprintf(stderr, "taiga-tui: logout: %v\n", err)
+		return 1
+	}
+	fmt.Fprintf(stdout, "Logged out of %s.\n", host)
 	return 0
 }
 
 const helpText = `taiga-tui - keyboard-driven terminal UI for Taiga Taskboards and Kanban Boards
 
 Usage:
-  taiga-tui [flags]
+  taiga-tui [flags]          Start the TUI
+  taiga-tui logout [flags]   Delete the stored login of the instance
 
 Flags:
   --instance URL     Taiga instance URL (env %s,
