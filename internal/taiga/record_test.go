@@ -8,6 +8,7 @@ import (
 	"os"
 	"slices"
 	"testing"
+	"time"
 
 	"github.com/zeckitoz/taiga-tui/internal/config"
 	"github.com/zeckitoz/taiga-tui/internal/domain"
@@ -77,6 +78,31 @@ func TestRecordFixtures(t *testing.T) {
 	}
 	mustRecord(t, rec, "userstory.json", func() error {
 		_, err := client.UserStory(ctx, stories[0].ID)
+		return err
+	})
+
+	var sprints []domain.Sprint
+	mustRecord(t, rec, "milestones.json", func() (err error) {
+		sprints, err = client.Sprints(ctx, project.ID)
+		return err
+	})
+	current := domain.ResolveCurrentSprint(sprints, domain.DateOf(time.Now()), 0)
+	if current.Kind != domain.One {
+		t.Fatal("the test project needs exactly one Sprint containing today")
+	}
+	var content domain.SprintContent
+	err := rec.RecordEach([]string{"userstories_sprint.json", "tasks_sprint.json"}, func() (err error) {
+		content, err = client.Taskboard(ctx, current.Sprint.ID)
+		return err
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(content.Tasks) == 0 {
+		t.Fatal("the current Sprint of the test project has no Tasks")
+	}
+	mustRecord(t, rec, "task.json", func() error {
+		_, err := client.Task(ctx, content.Tasks[0].ID)
 		return err
 	})
 

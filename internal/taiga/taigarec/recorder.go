@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 )
@@ -54,8 +55,18 @@ func (r *Recorder) RoundTrip(req *http.Request) (*http.Response, error) {
 // Record runs call, which must send exactly one request through the Recorder
 // and succeed, and keeps the response as the fixture name, e.g. "me.json".
 func (r *Recorder) Record(name string, call func() error) error {
-	if name != filepath.Base(name) || !strings.HasSuffix(name, ".json") {
-		return fmt.Errorf("fixture name %q must be a plain .json file name", name)
+	return r.RecordEach([]string{name}, call)
+}
+
+// RecordEach runs call, which must send one request per name through the
+// Recorder and succeed, and keeps the responses in order as the fixtures
+// names.
+func (r *Recorder) RecordEach(names []string, call func() error) error {
+	label := strings.Join(names, ", ")
+	for _, name := range names {
+		if name != filepath.Base(name) || !strings.HasSuffix(name, ".json") {
+			return fmt.Errorf("fixture name %q must be a plain .json file name", name)
+		}
 	}
 	r.mu.Lock()
 	r.captured = nil
@@ -67,20 +78,23 @@ func (r *Recorder) Record(name string, call func() error) error {
 	defer r.mu.Unlock()
 	captured := r.captured
 	r.captured = nil
-	switch {
-	case err != nil:
-		return fmt.Errorf("%s: %w", name, err)
-	case len(captured) != 1:
-		return fmt.Errorf("%s: call sent %d requests, want 1", name, len(captured))
-	case captured[0].status < 200 || captured[0].status > 299:
-		return fmt.Errorf("%s: HTTP %d", name, captured[0].status)
+	if err != nil {
+		return fmt.Errorf("%s: %w", label, err)
 	}
-	for _, f := range r.fixtures {
-		if f.Name == name {
+	if len(captured) != len(names) {
+		return fmt.Errorf("%s: call sent %d requests, want %d", label, len(captured), len(names))
+	}
+	for i, name := range names {
+		if c := captured[i]; c.status < 200 || c.status > 299 {
+			return fmt.Errorf("%s: HTTP %d", name, c.status)
+		}
+		if slices.ContainsFunc(r.fixtures, func(f Fixture) bool { return f.Name == name }) {
 			return fmt.Errorf("%s: recorded twice", name)
 		}
 	}
-	r.fixtures = append(r.fixtures, Fixture{Name: name, Body: captured[0].body})
+	for i, name := range names {
+		r.fixtures = append(r.fixtures, Fixture{Name: name, Body: captured[i].body})
+	}
 	return nil
 }
 

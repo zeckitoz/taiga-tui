@@ -154,3 +154,50 @@ func TestRecorderRequiresExactlyOneRequestPerFixture(t *testing.T) {
 		t.Errorf("got %v, want an error naming me.json", err)
 	}
 }
+
+func TestRecordEachKeepsOneFixturePerRequestInOrder(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(`{"path": "` + r.URL.Path + `"}`))
+	}))
+	t.Cleanup(srv.Close)
+	rec := taigarec.NewRecorder(http.DefaultTransport)
+	dir := t.TempDir()
+
+	err := rec.RecordEach([]string{"first.json", "second.json"}, func() error {
+		c := &http.Client{Transport: rec}
+		for _, p := range []string{"/one", "/two"} {
+			resp, err := c.Get(srv.URL + p)
+			if err != nil {
+				return err
+			}
+			_ = resp.Body.Close()
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := rec.Save(dir, taigarec.Anonymiser{}); err != nil {
+		t.Fatal(err)
+	}
+
+	files := readDir(t, dir)
+	if !strings.Contains(files["first.json"], "/one") || !strings.Contains(files["second.json"], "/two") {
+		t.Errorf("files %v", files)
+	}
+}
+
+func TestRecordEachRequiresOneRequestPerName(t *testing.T) {
+	srv := liveServer(t)
+	rec := taigarec.NewRecorder(http.DefaultTransport)
+	client := taiga.NewClient(srv.URL, staticToken("t"), taiga.WithTransport(rec))
+
+	err := rec.RecordEach([]string{"me.json", "more.json"}, func() error {
+		_, err := client.Me(t.Context())
+		return err
+	})
+
+	if err == nil || !strings.Contains(err.Error(), "sent 1 requests, want 2") {
+		t.Errorf("got %v", err)
+	}
+}

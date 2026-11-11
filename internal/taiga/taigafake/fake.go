@@ -18,6 +18,8 @@ type Fake struct {
 	me       domain.TeamMember
 	projects []domain.Project
 	stories  map[int64][]domain.UserStory // by project ID
+	sprints  map[int64][]domain.Sprint    // by project ID
+	tasks    map[int64][]domain.Task      // by project ID
 	fail     map[string][]error
 	holds    map[string]chan struct{}
 	calls    map[string]int
@@ -28,6 +30,8 @@ func New(me domain.TeamMember) *Fake {
 	return &Fake{
 		me:      me,
 		stories: map[int64][]domain.UserStory{},
+		sprints: map[int64][]domain.Sprint{},
+		tasks:   map[int64][]domain.Task{},
 		fail:    map[string][]error{},
 		holds:   map[string]chan struct{}{},
 		calls:   map[string]int{},
@@ -48,6 +52,21 @@ func (f *Fake) SetStories(projectID int64, stories ...domain.UserStory) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.stories[projectID] = stories
+}
+
+// SetSprints replaces the Sprints of the project with the given ID, newest
+// first as Taiga lists them.
+func (f *Fake) SetSprints(projectID int64, sprints ...domain.Sprint) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.sprints[projectID] = sprints
+}
+
+// SetTasks replaces the Tasks of the project with the given ID.
+func (f *Fake) SetTasks(projectID int64, tasks ...domain.Task) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.tasks[projectID] = tasks
 }
 
 // FailNext makes the next call of method (e.g. "Kanban") return err. Several
@@ -181,6 +200,60 @@ func (f *Fake) UserStory(ctx context.Context, id int64) (domain.UserStory, error
 		}
 	}
 	return domain.UserStory{}, taiga.ErrNotFound
+}
+
+// Sprints implements the Taiga interface.
+func (f *Fake) Sprints(ctx context.Context, projectID int64) ([]domain.Sprint, error) {
+	if err := f.enter(ctx, "Sprints"); err != nil {
+		return nil, err
+	}
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return slices.Clone(f.sprints[projectID]), nil
+}
+
+// Taskboard implements the Taiga interface. Like Taiga, it leaves out the
+// descriptions.
+func (f *Fake) Taskboard(ctx context.Context, sprintID int64) (domain.SprintContent, error) {
+	if err := f.enter(ctx, "Taskboard"); err != nil {
+		return domain.SprintContent{}, err
+	}
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	var c domain.SprintContent
+	for _, p := range f.projects { // in a fixed order, unlike the maps
+		for _, s := range f.stories[p.ID] {
+			if s.Sprint == sprintID {
+				s.Description = ""
+				c.UserStories = append(c.UserStories, s)
+			}
+		}
+		for _, t := range f.tasks[p.ID] {
+			if t.Sprint == sprintID {
+				t.Description = ""
+				c.Tasks = append(c.Tasks, t)
+			}
+		}
+	}
+	return c, nil
+}
+
+// Task implements the Taiga interface. It finds the Task in any project,
+// including its description.
+func (f *Fake) Task(ctx context.Context, id int64) (domain.Task, error) {
+	if err := f.enter(ctx, "Task"); err != nil {
+		return domain.Task{}, err
+	}
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	for _, tasks := range f.tasks {
+		for _, t := range tasks {
+			if t.ID == id {
+				return t, nil
+			}
+		}
+	}
+	return domain.Task{}, taiga.ErrNotFound
 }
 
 func archived(p domain.Project, status int64) bool {

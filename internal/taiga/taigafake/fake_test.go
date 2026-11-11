@@ -3,6 +3,7 @@ package taigafake_test
 import (
 	"context"
 	"errors"
+	"slices"
 	"testing"
 
 	"github.com/zeckitoz/taiga-tui/internal/domain"
@@ -108,5 +109,61 @@ func TestHeldCallEndsWithItsContext(t *testing.T) {
 
 	if _, err := f.Projects(ctx, 42); !errors.Is(err, context.Canceled) {
 		t.Errorf("got %v", err)
+	}
+}
+
+func TestSprintsOfProject(t *testing.T) {
+	f := newFake()
+	s := domain.Sprint{ID: 3, Name: "Sprint 1"}
+	f.SetSprints(7, s)
+
+	if got, err := f.Sprints(t.Context(), 7); err != nil || len(got) != 1 || got[0] != s {
+		t.Errorf("got %+v, %v", got, err)
+	}
+	if got, err := f.Sprints(t.Context(), 8); err != nil || len(got) != 0 {
+		t.Errorf("other project: %+v, %v", got, err)
+	}
+}
+
+func TestTaskboardHoldsUserStoriesAndTasksOfSprintWithoutDescriptions(t *testing.T) {
+	f := newFake()
+	f.SetStories(7,
+		domain.UserStory{ID: 10, Sprint: 3, Description: "Pay by card."},
+		domain.UserStory{ID: 11, Sprint: 4},
+		domain.UserStory{ID: 12, Status: 2, Sprint: 3},
+	)
+	f.SetTasks(7,
+		domain.Task{ID: 20, UserStory: 10, Sprint: 3, Description: "Luhn check."},
+		domain.Task{ID: 21, Sprint: 4},
+		domain.Task{ID: 22, Sprint: 3},
+	)
+
+	got, err := f.Taskboard(t.Context(), 3)
+
+	if err != nil {
+		t.Fatal(err)
+	}
+	ids := func(n int, id func(int) int64) []int64 {
+		out := make([]int64, n)
+		for i := range out {
+			out[i] = id(i)
+		}
+		return out
+	}
+	// Unlike the Kanban Board, the Taskboard keeps archived Statuses.
+	if s := ids(len(got.UserStories), func(i int) int64 { return got.UserStories[i].ID }); !slices.Equal(s, []int64{10, 12}) {
+		t.Errorf("User Stories %v", s)
+	}
+	if s := ids(len(got.Tasks), func(i int) int64 { return got.Tasks[i].ID }); !slices.Equal(s, []int64{20, 22}) {
+		t.Errorf("Tasks %v", s)
+	}
+	if got.UserStories[0].Description != "" || got.Tasks[0].Description != "" {
+		t.Errorf("descriptions in lists: %+v", got)
+	}
+	if task, err := f.Task(t.Context(), 20); err != nil || task.Description != "Luhn check." {
+		t.Errorf("Task: %+v, %v", task, err)
+	}
+	if _, err := f.Task(t.Context(), 99); !errors.Is(err, taiga.ErrNotFound) {
+		t.Errorf("unknown Task: %v, want ErrNotFound", err)
 	}
 }

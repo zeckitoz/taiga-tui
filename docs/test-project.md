@@ -19,7 +19,8 @@ Never share passwords or tokens, and never write the project's name or slug into
 The tests rely on these cases, so keep them when you change the project:
 
 - Kanban and Backlog are enabled.
-- A Sprint whose date range contains the recording date.
+- Exactly one Sprint whose date range contains the recording date, holding User Stories A to D.
+  The recording takes its Taskboard (`userstories_sprint.json`, `tasks_sprint.json`) and its first Task (`task.json`).
 - User Story Statuses from the Scrum template, with a WIP limit of 3 on "In progress", "Done" closed and "Archived" archived.
 - User Story A in "In progress" with two Assignees, where `assigned_to` is not the first entry of `assigned_users`, and two Tasks: one closed with an Assignee, one open without.
   It has a description, which `userstory.json` records as `redacted`.

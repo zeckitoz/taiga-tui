@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"maps"
 	"os"
 	"path/filepath"
 
@@ -28,6 +29,39 @@ type State struct {
 	FullName string `json:"full_name,omitempty"`
 	// DefaultProject is the ID of the project opened at start, 0 if none.
 	DefaultProject int64 `json:"default_project,omitempty"`
+	// LastBoard is the board opened at start, empty if none was used yet.
+	LastBoard Board `json:"last_board,omitempty"`
+	// Sprints remembers the Sprint chosen last by project ID. Use WithSprint
+	// and WithoutSprint to change it, since copies of a State share the map.
+	Sprints map[int64]int64 `json:"sprints,omitempty"`
+}
+
+// Board names one of a project's boards.
+type Board string
+
+// The boards.
+const (
+	BoardKanban    Board = "kanban"
+	BoardTaskboard Board = "taskboard"
+)
+
+// WithSprint returns the state remembering sprintID as the Sprint chosen
+// last in the project with the given ID.
+func (s State) WithSprint(projectID, sprintID int64) State {
+	s.Sprints = maps.Clone(s.Sprints)
+	if s.Sprints == nil {
+		s.Sprints = map[int64]int64{}
+	}
+	s.Sprints[projectID] = sprintID
+	return s
+}
+
+// WithoutSprint returns the state forgetting the Sprint chosen last in the
+// project with the given ID.
+func (s State) WithoutSprint(projectID int64) State {
+	s.Sprints = maps.Clone(s.Sprints)
+	delete(s.Sprints, projectID)
+	return s
 }
 
 // LoggedIn returns the state after a successful login of m with the given
