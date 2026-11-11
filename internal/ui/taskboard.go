@@ -67,8 +67,9 @@ func dateRange(s domain.Sprint) string {
 	return day(s.Start) + strconv.Itoa(s.Start.Year) + " - " + day(s.Finish) + strconv.Itoa(s.Finish.Year)
 }
 
-// sprintPhase tells whether the Sprint is current, upcoming or neither on
-// today, and whether it is closed, e.g. "current · closed".
+// sprintPhase tells whether the Sprint is current, upcoming or past on
+// today and whether it is closed, e.g. "current · closed". A past Sprint is
+// "closed" if it is, and "past" only while it is still open.
 func sprintPhase(s domain.Sprint, today domain.Date) string {
 	var parts []string
 	switch {
@@ -76,6 +77,8 @@ func sprintPhase(s domain.Sprint, today domain.Date) string {
 		parts = append(parts, "current")
 	case s.Start.Compare(today) > 0:
 		parts = append(parts, "upcoming")
+	case !s.Closed:
+		parts = append(parts, "past")
 	}
 	if s.Closed {
 		parts = append(parts, "closed")

@@ -214,25 +214,23 @@ func (f *Fake) Sprints(ctx context.Context, projectID int64) ([]domain.Sprint, e
 
 // Taskboard implements the Taiga interface. Like Taiga, it leaves out the
 // descriptions.
-func (f *Fake) Taskboard(ctx context.Context, sprintID int64) (domain.SprintContent, error) {
+func (f *Fake) Taskboard(ctx context.Context, projectID, sprintID int64) (domain.SprintContent, error) {
 	if err := f.enter(ctx, "Taskboard"); err != nil {
 		return domain.SprintContent{}, err
 	}
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	var c domain.SprintContent
-	for _, p := range f.projects { // in a fixed order, unlike the maps
-		for _, s := range f.stories[p.ID] {
-			if s.Sprint == sprintID {
-				s.Description = ""
-				c.UserStories = append(c.UserStories, s)
-			}
+	for _, s := range f.stories[projectID] {
+		if s.Sprint == sprintID {
+			s.Description = ""
+			c.UserStories = append(c.UserStories, s)
 		}
-		for _, t := range f.tasks[p.ID] {
-			if t.Sprint == sprintID {
-				t.Description = ""
-				c.Tasks = append(c.Tasks, t)
-			}
+	}
+	for _, t := range f.tasks[projectID] {
+		if t.Sprint == sprintID {
+			t.Description = ""
+			c.Tasks = append(c.Tasks, t)
 		}
 	}
 	return c, nil

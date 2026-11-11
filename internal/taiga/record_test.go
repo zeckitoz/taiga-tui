@@ -92,7 +92,7 @@ func TestRecordFixtures(t *testing.T) {
 	}
 	var content domain.SprintContent
 	err := rec.RecordEach([]string{"userstories_sprint.json", "tasks_sprint.json"}, func() (err error) {
-		content, err = client.Taskboard(ctx, current.Sprint.ID)
+		content, err = client.Taskboard(ctx, project.ID, current.Sprint.ID)
 		return err
 	})
 	if err != nil {

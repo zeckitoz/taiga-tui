@@ -272,7 +272,7 @@ func TestHeaderNamesSprintWithDateRangeAndPhase(t *testing.T) {
 		},
 		{
 			domain.Sprint{ID: 2, Name: "Late", Start: domain.Date{Year: 2026, Month: 9, Day: 1}, Finish: domain.Date{Year: 2026, Month: 9, Day: 14}},
-			"Web Shop › Taskboard › Late  01.09. - 14.09.2026 ",
+			"Web Shop › Taskboard › Late  01.09. - 14.09.2026  past",
 		},
 	}
 	for _, tt := range tests {
@@ -313,7 +313,9 @@ func TestEmptySprintShowsHintAndSwitchesSprint(t *testing.T) {
 }
 
 func TestProjectWithoutSprintsShowsHint(t *testing.T) {
-	h := resumed(t, newFake(), aliceState(mobileApp.ID))
+	st := aliceState(mobileApp.ID)
+	st.LastBoard = config.BoardTaskboard
+	h := resumed(t, newFake(), st)
 	h.start()
 
 	h.golden("taskboard_no_sprints")
@@ -584,5 +586,70 @@ func TestNoSprintsFooterOffersKanbanWhenEnabled(t *testing.T) {
 	lines := strings.Split(h.plainView(), "\n")
 	if foot := lines[len(lines)-1]; !strings.Contains(foot, "b kanban") {
 		t.Errorf("footer %q", foot)
+	}
+}
+
+func TestRefreshOnTaskboardAlsoReloadsSprints(t *testing.T) {
+	h := onTaskboard(t, 100, 24)
+	sprint6 := domain.Sprint{ID: 306, Name: "Sprint 6", Start: domain.Date{Year: 2026, Month: 12, Day: 1}, Finish: domain.Date{Year: 2026, Month: 12, Day: 14}}
+	h.taiga.SetSprints(webShop.ID, sprint6, sprint5, sprint4, sprint3)
+
+	h.key("r")
+
+	if h.app.screen != screenBoard || shownTaskboard(h).Sprint().ID != sprint4.ID {
+		t.Fatalf("refresh changed the Sprint shown:\n%s", h.plainView())
+	}
+	h.key(":")
+	if !strings.Contains(h.plainView(), "Sprint 6") {
+		t.Errorf("new Sprint missing:\n%s", h.plainView())
+	}
+}
+
+func TestStartOnDisabledLastBoardOpensOtherWithHint(t *testing.T) {
+	kanbanOnly := domain.Project{
+		ProjectSummary:    domain.ProjectSummary{ID: 10, Name: "Support", Slug: "support", KanbanEnabled: true},
+		UserStoryStatuses: webShop.UserStoryStatuses,
+		Members:           []domain.TeamMember{alice},
+	}
+	tests := []struct {
+		project domain.Project
+		last    config.Board
+		want    config.Board
+		hint    string
+	}{
+		{mobileApp, config.BoardKanban, config.BoardTaskboard, "Kanban is disabled in mobile app, showing Taskboard"},
+		{kanbanOnly, config.BoardTaskboard, config.BoardKanban, "Taskboard is disabled in Support, showing Kanban Board"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.project.Name, func(t *testing.T) {
+			st := aliceState(tt.project.ID)
+			st.LastBoard = tt.last
+			h := resumed(t, newFakeWith(tt.project), st)
+
+			h.start()
+
+			if h.app.board != tt.want || h.state.saved.LastBoard != tt.want {
+				t.Errorf("board %q, saved %q", h.app.board, h.state.saved.LastBoard)
+			}
+			if !strings.Contains(h.plainView(), tt.hint) {
+				t.Errorf("hint missing:\n%s", h.plainView())
+			}
+			h.key("j")
+			if strings.Contains(h.plainView(), tt.hint) {
+				t.Error("hint still shown after the next key")
+			}
+		})
+	}
+}
+
+func TestPickedProjectFallsBackWithoutHint(t *testing.T) {
+	h := resumed(t, newFake(), aliceState(0))
+	h.start()
+
+	h.typeText("mobile")
+	h.key("enter")
+
+	if h.app.board != config.BoardTaskboard || strings.Contains(h.plainView(), "disabled") {
+		t.Errorf("board %q:\n%s", h.app.board, h.plainView())
 	}
 }

@@ -35,7 +35,7 @@ type Taiga interface {
 	Kanban(ctx context.Context, projectID int64) ([]domain.UserStory, error)
 	UserStory(ctx context.Context, id int64) (domain.UserStory, error)
 	Sprints(ctx context.Context, projectID int64) ([]domain.Sprint, error)
-	Taskboard(ctx context.Context, sprintID int64) (domain.SprintContent, error)
+	Taskboard(ctx context.Context, projectID, sprintID int64) (domain.SprintContent, error)
 	Task(ctx context.Context, id int64) (domain.Task, error)
 }
 
@@ -140,8 +140,10 @@ type (
 type statusMsg struct {
 	text  string
 	isErr bool
-	// transient entries disappear with the next action or load.
+	// transient entries disappear with the next action or load, hints only
+	// with the next action.
 	transient bool
+	hint      bool
 }
 
 // App is the root model.
@@ -327,12 +329,14 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return a, nil
 }
 
-// clearTransient drops transient status entries when msg is a key press.
+// clearTransient drops transient status entries and hints when msg is a key
+// press.
 func (a App) clearTransient(msg tea.Msg) App {
 	if _, ok := msg.(tea.KeyPressMsg); !ok {
 		return a
 	}
-	return a.withoutTransient()
+	a.status = slices.DeleteFunc(slices.Clone(a.status), func(s statusMsg) bool { return s.transient || s.hint })
+	return a
 }
 
 func (a App) withoutTransient() App {
@@ -493,7 +497,20 @@ func (a App) projectLoaded(p domain.Project) (App, tea.Cmd) {
 		a.state.DefaultProject = p.ID
 		a = a.saveState()
 	}
-	return a.openBoard(a.boardFor(p))
+	b := a.boardFor(p)
+	if last := a.state.LastBoard; !a.picked && last != "" && last != b {
+		a.status = append(a.status, statusMsg{
+			text: boardNames[last].short + " is disabled in " + p.Name + ", showing " + boardNames[b].full,
+			hint: true,
+		})
+	}
+	return a.openBoard(b)
+}
+
+// boardNames name the boards in texts, in full and short.
+var boardNames = map[config.Board]struct{ full, short string }{
+	config.BoardKanban:    {"Kanban Board", "Kanban"},
+	config.BoardTaskboard: {"Taskboard", "Taskboard"},
 }
 
 // boardFor returns the board to open in p: the last used board at start,
@@ -565,6 +582,9 @@ func (a App) sprintsLoaded(msg sprintsLoadedMsg) (tea.Model, tea.Cmd) {
 		a.state = a.state.WithoutSprint(a.project.ID)
 		a = a.saveState()
 	}
+	if _, ok := a.sprints.Taskboard(); ok {
+		return a, nil // a refresh of the list keeps the Sprint shown
+	}
 	res := domain.ResolveCurrentSprint(a.sprints.List(), a.today(), a.state.Sprints[a.project.ID])
 	switch res.Kind {
 	case domain.One:
@@ -626,7 +646,7 @@ func (a App) loadTaskboard(s domain.Sprint) (App, tea.Cmd) {
 	a.sprints, load = a.sprints.Open(s)
 	api := a.deps.Taiga
 	cmd := func() tea.Msg {
-		c, err := api.Taskboard(context.Background(), load.Sprint.ID)
+		c, err := api.Taskboard(context.Background(), load.ProjectID, load.Sprint.ID)
 		return taskboardLoadedMsg{load: load, content: c, err: err}
 	}
 	if load.Refresh {
@@ -845,7 +865,9 @@ func (a App) updateTaskboard(key tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		a.sprintPicker.scroll(a.pickerListHeight())
 		return a, nil
 	case "r":
-		return a.loadTaskboard(tb.Sprint())
+		a, sprints := a.loadSprints()
+		a, taskboard := a.loadTaskboard(tb.Sprint())
+		return a, tea.Batch(sprints, taskboard)
 	case "up", "k":
 		tb = tb.CursorUp()
 	case "down", "j":

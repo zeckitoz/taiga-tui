@@ -317,7 +317,7 @@ func TestTaskboardLoadsUserStoriesAndTasksOfSprint(t *testing.T) {
 			 "milestone": 11, "assigned_to": null, "taskboard_order": 1, "version": 1}]`,
 	})
 
-	got, err := taiga.NewClient(srv.URL, staticToken("t")).Taskboard(t.Context(), 11)
+	got, err := taiga.NewClient(srv.URL, staticToken("t")).Taskboard(t.Context(), 7, 11)
 
 	if err != nil {
 		t.Fatal(err)
@@ -336,8 +336,8 @@ func TestTaskboardLoadsUserStoriesAndTasksOfSprint(t *testing.T) {
 		t.Errorf("got  %+v\nwant %+v", got, want)
 	}
 	for _, req := range srv.requests() {
-		if m := req.URL.Query().Get("milestone"); m != "11" {
-			t.Errorf("%s: milestone=%q", req.URL.Path, m)
+		if q := req.URL.Query(); q.Get("project") != "7" || q.Get("milestone") != "11" {
+			t.Errorf("%s: query %v", req.URL.Path, q)
 		}
 		if p := req.Header.Get("x-disable-pagination"); p != "1" {
 			t.Errorf("%s: x-disable-pagination %q", req.URL.Path, p)
@@ -355,7 +355,7 @@ func TestTaskboardFailsIfTasksFail(t *testing.T) {
 	}))
 	t.Cleanup(srv.Close)
 
-	_, err := taiga.NewClient(srv.URL, staticToken("t")).Taskboard(t.Context(), 11)
+	_, err := taiga.NewClient(srv.URL, staticToken("t")).Taskboard(t.Context(), 7, 11)
 
 	if serr, ok := errors.AsType[*taiga.ServerError](err); !ok || serr.Code != 502 {
 		t.Errorf("got %v, want ServerError 502", err)

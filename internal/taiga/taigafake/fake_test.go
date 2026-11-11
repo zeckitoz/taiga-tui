@@ -138,7 +138,7 @@ func TestTaskboardHoldsUserStoriesAndTasksOfSprintWithoutDescriptions(t *testing
 		domain.Task{ID: 22, Sprint: 3},
 	)
 
-	got, err := f.Taskboard(t.Context(), 3)
+	got, err := f.Taskboard(t.Context(), 7, 3)
 
 	if err != nil {
 		t.Fatal(err)
@@ -159,6 +159,9 @@ func TestTaskboardHoldsUserStoriesAndTasksOfSprintWithoutDescriptions(t *testing
 	}
 	if got.UserStories[0].Description != "" || got.Tasks[0].Description != "" {
 		t.Errorf("descriptions in lists: %+v", got)
+	}
+	if other, err := f.Taskboard(t.Context(), 8, 3); err != nil || len(other.UserStories)+len(other.Tasks) != 0 {
+		t.Errorf("Taskboard of the Sprint in another project: %+v, %v", other, err)
 	}
 	if task, err := f.Task(t.Context(), 20); err != nil || task.Description != "Luhn check." {
 		t.Errorf("Task: %+v, %v", task, err)

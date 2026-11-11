@@ -328,9 +328,12 @@ func deref(p *int64) int64 {
 }
 
 // Taskboard returns the User Stories and Tasks of the Sprint with the given
-// ID, in the order Taiga sends them and without descriptions.
-func (c *Client) Taskboard(ctx context.Context, sprintID int64) (domain.SprintContent, error) {
-	q := url.Values{"milestone": {strconv.FormatInt(sprintID, 10)}}
+// ID in the project, in the order Taiga sends them and without descriptions.
+func (c *Client) Taskboard(ctx context.Context, projectID, sprintID int64) (domain.SprintContent, error) {
+	q := url.Values{
+		"project":   {strconv.FormatInt(projectID, 10)},
+		"milestone": {strconv.FormatInt(sprintID, 10)},
+	}
 	userStories, err := c.userStories(ctx, q)
 	if err != nil {
 		return domain.SprintContent{}, err
