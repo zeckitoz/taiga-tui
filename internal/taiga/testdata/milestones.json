@@ -1,0 +1,283 @@
+[
+  {
+    "closed": false,
+    "closed_points": null,
+    "created_date": "2026-11-11T16:04:04.483Z",
+    "disponibility": 0.0,
+    "estimated_finish": "2026-11-25",
+    "estimated_start": "2026-11-11",
+    "id": 1947,
+    "modified_date": "2026-11-11T16:04:04.490Z",
+    "name": "Sprint 1",
+    "order": 1,
+    "owner": 368,
+    "project": 496,
+    "project_extra_info": {
+      "id": 496,
+      "logo_small_url": null,
+      "name": "Test Project",
+      "slug": "test-project"
+    },
+    "slug": "sprint-1-109",
+    "total_points": null,
+    "user_stories": [
+      {
+        "assigned_to": 386,
+        "assigned_to_extra_info": {
+          "big_photo": "https://media.example.invalid/redacted.png",
+          "full_name_display": "Member 4",
+          "gravatar_id": "redacted",
+          "id": 386,
+          "is_active": true,
+          "photo": "https://media.example.invalid/redacted.png",
+          "username": "member-4"
+        },
+        "backlog_order": 1794413075156158,
+        "blocked_note": "",
+        "client_requirement": false,
+        "created_date": "2026-11-11T16:04:35.166Z",
+        "due_date": null,
+        "due_date_reason": "",
+        "due_date_status": "not_set",
+        "epics": null,
+        "external_reference": null,
+        "finish_date": null,
+        "id": 10213,
+        "is_blocked": false,
+        "is_closed": false,
+        "kanban_order": 1794413075166346,
+        "milestone": 1947,
+        "modified_date": "2026-11-11T17:18:20.283Z",
+        "points": {
+          "2820": 5840,
+          "2821": 5840,
+          "2822": 5840,
+          "2823": 5840
+        },
+        "project": 496,
+        "project_extra_info": {
+          "id": 496,
+          "logo_small_url": null,
+          "name": "Test Project",
+          "slug": "test-project"
+        },
+        "ref": 1,
+        "sprint_order": 1,
+        "status": 2951,
+        "status_extra_info": {
+          "color": "#E47C40",
+          "is_closed": false,
+          "name": "In progress"
+        },
+        "subject": "A",
+        "team_requirement": false,
+        "total_points": null,
+        "version": 8
+      },
+      {
+        "assigned_to": null,
+        "assigned_to_extra_info": null,
+        "backlog_order": 1794413084331863,
+        "blocked_note": "",
+        "client_requirement": false,
+        "created_date": "2026-11-11T16:04:44.345Z",
+        "due_date": null,
+        "due_date_reason": "",
+        "due_date_status": "not_set",
+        "epics": null,
+        "external_reference": null,
+        "finish_date": null,
+        "id": 10214,
+        "is_blocked": false,
+        "is_closed": false,
+        "kanban_order": 1794413084345230,
+        "milestone": 1947,
+        "modified_date": "2026-11-11T16:04:44.353Z",
+        "points": {
+          "2820": 5840,
+          "2821": 5840,
+          "2822": 5840,
+          "2823": 5840
+        },
+        "project": 496,
+        "project_extra_info": {
+          "id": 496,
+          "logo_small_url": null,
+          "name": "Test Project",
+          "slug": "test-project"
+        },
+        "ref": 2,
+        "sprint_order": 2,
+        "status": 2949,
+        "status_extra_info": {
+          "color": "#70728F",
+          "is_closed": false,
+          "name": "New"
+        },
+        "subject": "B",
+        "team_requirement": false,
+        "total_points": null,
+        "version": 1
+      },
+      {
+        "assigned_to": 386,
+        "assigned_to_extra_info": {
+          "big_photo": "https://media.example.invalid/redacted.png",
+          "full_name_display": "Member 4",
+          "gravatar_id": "redacted",
+          "id": 386,
+          "is_active": true,
+          "photo": "https://media.example.invalid/redacted.png",
+          "username": "member-4"
+        },
+        "backlog_order": 1794413108569127,
+        "blocked_note": "",
+        "client_requirement": false,
+        "created_date": "2026-11-11T16:05:08.582Z",
+        "due_date": null,
+        "due_date_reason": "",
+        "due_date_status": "not_set",
+        "epics": null,
+        "external_reference": null,
+        "finish_date": null,
+        "id": 10215,
+        "is_blocked": false,
+        "is_closed": false,
+        "kanban_order": 1794413108582883,
+        "milestone": 1947,
+        "modified_date": "2026-11-11T16:15:21.999Z",
+        "points": {
+          "2820": 5840,
+          "2821": 5840,
+          "2822": 5840,
+          "2823": 5840
+        },
+        "project": 496,
+        "project_extra_info": {
+          "id": 496,
+          "logo_small_url": null,
+          "name": "Test Project",
+          "slug": "test-project"
+        },
+        "ref": 3,
+        "sprint_order": 3,
+        "status": 2952,
+        "status_extra_info": {
+          "color": "#E4CE40",
+          "is_closed": false,
+          "name": "Ready for test"
+        },
+        "subject": "C",
+        "team_requirement": false,
+        "total_points": null,
+        "version": 3
+      },
+      {
+        "assigned_to": 368,
+        "assigned_to_extra_info": {
+          "big_photo": "https://media.example.invalid/redacted.png",
+          "full_name_display": "Member 3",
+          "gravatar_id": "redacted",
+          "id": 368,
+          "is_active": true,
+          "photo": "https://media.example.invalid/redacted.png",
+          "username": "member-3"
+        },
+        "backlog_order": 1794413124544005,
+        "blocked_note": "",
+        "client_requirement": false,
+        "created_date": "2026-11-11T16:05:24.555Z",
+        "due_date": null,
+        "due_date_reason": "",
+        "due_date_status": "not_set",
+        "epics": null,
+        "external_reference": null,
+        "finish_date": null,
+        "id": 10216,
+        "is_blocked": false,
+        "is_closed": true,
+        "kanban_order": 1794413124555477,
+        "milestone": 1947,
+        "modified_date": "2026-11-11T16:05:24.562Z",
+        "points": {
+          "2820": 5840,
+          "2821": 5840,
+          "2822": 5840,
+          "2823": 5840
+        },
+        "project": 496,
+        "project_extra_info": {
+          "id": 496,
+          "logo_small_url": null,
+          "name": "Test Project",
+          "slug": "test-project"
+        },
+        "ref": 4,
+        "sprint_order": 4,
+        "status": 2953,
+        "status_extra_info": {
+          "color": "#A8E440",
+          "is_closed": true,
+          "name": "Done"
+        },
+        "subject": "D",
+        "team_requirement": false,
+        "total_points": null,
+        "version": 1
+      },
+      {
+        "assigned_to": 368,
+        "assigned_to_extra_info": {
+          "big_photo": "https://media.example.invalid/redacted.png",
+          "full_name_display": "Member 3",
+          "gravatar_id": "redacted",
+          "id": 368,
+          "is_active": true,
+          "photo": "https://media.example.invalid/redacted.png",
+          "username": "member-3"
+        },
+        "backlog_order": 1794413135184632,
+        "blocked_note": "",
+        "client_requirement": false,
+        "created_date": "2026-11-11T16:05:35.196Z",
+        "due_date": null,
+        "due_date_reason": "",
+        "due_date_status": "not_set",
+        "epics": null,
+        "external_reference": null,
+        "finish_date": null,
+        "id": 10217,
+        "is_blocked": false,
+        "is_closed": false,
+        "kanban_order": 1794413135196546,
+        "milestone": 1947,
+        "modified_date": "2026-11-11T16:05:35.204Z",
+        "points": {
+          "2820": 5840,
+          "2821": 5840,
+          "2822": 5840,
+          "2823": 5840
+        },
+        "project": 496,
+        "project_extra_info": {
+          "id": 496,
+          "logo_small_url": null,
+          "name": "Test Project",
+          "slug": "test-project"
+        },
+        "ref": 5,
+        "sprint_order": 5,
+        "status": 2954,
+        "status_extra_info": {
+          "color": "#A9AABC",
+          "is_closed": true,
+          "name": "Archived"
+        },
+        "subject": "E",
+        "team_requirement": false,
+        "total_points": null,
+        "version": 1
+      }
+    ]
+  }
+]

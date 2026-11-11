@@ -31,7 +31,7 @@ The tests rely on these cases, so keep them when you change the project:
 - User Story D in "Done".
 - User Story E in "Archived", which the Kanban Board must leave out.
 
-Two cases cannot come from the live project and are answered inline in `internal/taiga/client_test.go`: a Team Member without a full name, and `tasks: null`.
+Some cases cannot come from the live project and are answered inline in `internal/taiga/client_test.go`: a Team Member without a full name, `tasks: null`, a Task without User Story, a Task with a description, a closed Sprint and malformed Sprint dates.
 The error responses (broken JSON, 5xx, version conflict, timeout) are hand-written as well.
 
 ## Recording
