@@ -24,6 +24,12 @@ func WithTimeout(d time.Duration) Option {
 	return func(c *http.Client) { c.Timeout = d }
 }
 
+// WithTransport sends requests through rt instead of http.DefaultTransport,
+// e.g. to record them.
+func WithTransport(rt http.RoundTripper) Option {
+	return func(c *http.Client) { c.Transport = rt }
+}
+
 func newHTTPClient(opts []Option) *http.Client {
 	c := &http.Client{Timeout: DefaultTimeout}
 	for _, opt := range opts {
