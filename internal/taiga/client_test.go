@@ -149,7 +149,7 @@ func TestKanbanLoadsUserStoriesOfActiveStatuses(t *testing.T) {
 	want := []domain.UserStory{
 		{
 			ID: 10213, Ref: 1, Title: "A", Status: 2951, SprintName: "Sprint 1",
-			Assignees: []int64{386, 368}, KanbanOrder: 1794413075166346, Version: 7,
+			Assignees: []int64{386, 368}, KanbanOrder: 1794413075166346, Version: 8,
 			Tasks: domain.TaskProgress{Done: 1, Total: 2},
 		},
 		{ID: 10214, Ref: 2, Title: "B", Status: 2949, SprintName: "Sprint 1", KanbanOrder: 1794413084345230, Version: 1},
@@ -185,7 +185,8 @@ func TestUserStoryLoadsRecordedUserStory(t *testing.T) {
 	// task progress is unknown here. The recording redacts descriptions.
 	want := domain.UserStory{
 		ID: 10213, Ref: 1, Title: "A", Status: 2951, SprintName: "Sprint 1",
-		Assignees: []int64{386, 368}, KanbanOrder: 1794413075166346, Version: 7,
+		Assignees: []int64{386, 368}, KanbanOrder: 1794413075166346, Version: 8,
+		Description: "redacted",
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("got  %+v\nwant %+v", got, want)
