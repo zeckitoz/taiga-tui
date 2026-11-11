@@ -173,6 +173,25 @@ func TestKanbanLoadsUserStoriesOfActiveStatuses(t *testing.T) {
 	}
 }
 
+func TestUserStoryLoadsRecordedUserStory(t *testing.T) {
+	srv := newFixtureServer(t, map[string]string{"/api/v1/userstories/10213": "userstory.json"})
+
+	got, err := taiga.NewClient(srv.URL, staticToken("t")).UserStory(t.Context(), 10213)
+
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Unlike the list, a single User Story comes with "tasks": [], so its
+	// task progress is unknown here. The recording redacts descriptions.
+	want := domain.UserStory{
+		ID: 10213, Ref: 1, Title: "A", Status: 2951, SprintName: "Sprint 1",
+		Assignees: []int64{386, 368}, KanbanOrder: 1794413075166346, Version: 7,
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("got  %+v\nwant %+v", got, want)
+	}
+}
+
 // The test project cannot provide these cases, so they are answered inline.
 
 func TestProjectFallsBackToUsernameForMemberWithoutFullName(t *testing.T) {

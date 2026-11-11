@@ -1,0 +1,99 @@
+{
+  "assigned_to": 386,
+  "assigned_to_extra_info": {
+    "big_photo": "https://media.example.invalid/redacted.png",
+    "full_name_display": "Member 4",
+    "gravatar_id": "redacted",
+    "id": 386,
+    "is_active": true,
+    "photo": "https://media.example.invalid/redacted.png",
+    "username": "member-4"
+  },
+  "assigned_users": [
+    368,
+    386
+  ],
+  "attachments": [],
+  "backlog_order": 1794413075156158,
+  "blocked_note": "",
+  "blocked_note_html": "",
+  "client_requirement": false,
+  "comment": "",
+  "created_date": "2026-11-11T16:04:35.166Z",
+  "description": "",
+  "description_html": "",
+  "due_date": null,
+  "due_date_reason": "",
+  "due_date_status": "not_set",
+  "epic_order": null,
+  "epics": null,
+  "external_reference": null,
+  "finish_date": null,
+  "from_task_ref": null,
+  "generated_from_issue": null,
+  "generated_from_task": null,
+  "id": 10213,
+  "is_blocked": false,
+  "is_closed": false,
+  "is_voter": false,
+  "is_watcher": false,
+  "kanban_order": 1794413075166346,
+  "milestone": 1947,
+  "milestone_name": "Sprint 1",
+  "milestone_slug": "sprint-1-109",
+  "modified_date": "2026-11-11T16:31:22.411Z",
+  "neighbors": {
+    "next": {
+      "id": 10214,
+      "ref": 2,
+      "subject": "B"
+    },
+    "previous": null
+  },
+  "origin_issue": null,
+  "origin_task": null,
+  "owner": 368,
+  "owner_extra_info": {
+    "big_photo": "https://media.example.invalid/redacted.png",
+    "full_name_display": "Member 3",
+    "gravatar_id": "redacted",
+    "id": 368,
+    "is_active": true,
+    "photo": "https://media.example.invalid/redacted.png",
+    "username": "member-3"
+  },
+  "points": {
+    "2820": 5840,
+    "2821": 5840,
+    "2822": 5840,
+    "2823": 5840
+  },
+  "project": 496,
+  "project_extra_info": {
+    "id": 496,
+    "logo_small_url": null,
+    "name": "Test Project",
+    "slug": "test-project"
+  },
+  "ref": 1,
+  "sprint_order": 1,
+  "status": 2951,
+  "status_extra_info": {
+    "color": "#E47C40",
+    "is_closed": false,
+    "name": "In progress"
+  },
+  "subject": "A",
+  "swimlane": null,
+  "tags": [],
+  "tasks": [],
+  "team_requirement": false,
+  "total_attachments": 0,
+  "total_comments": 0,
+  "total_points": null,
+  "total_voters": 0,
+  "total_watchers": 0,
+  "tribe_gig": null,
+  "version": 7,
+  "watchers": []
+}
