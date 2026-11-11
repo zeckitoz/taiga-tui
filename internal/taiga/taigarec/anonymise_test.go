@@ -175,6 +175,37 @@ func TestAnonymiseReplacesNamePartsAndAnyCaseInsideText(t *testing.T) {
 	}
 }
 
+func TestAnonymiseKeepsTaigaTemplateWordsThatAreAlsoNamesOrNameParts(t *testing.T) {
+	members := taigarec.Fixture{Name: "members.json", Body: []byte(`[
+		{"id": 1, "username": "afor", "full_name_display": "Ali For"},
+		{"id": 2, "username": "tester", "full_name_display": "test"},
+		{"name": "Ready for test", "slug": "ready-for-test", "subject": "Ask Ali For or Ali about the test for review"}]`)}
+
+	got := anonymise(t, taigarec.Anonymiser{}, members)
+
+	want := `[
+  {
+    "full_name_display": "Member 1",
+    "id": 1,
+    "username": "member-1"
+  },
+  {
+    "full_name_display": "Member 2",
+    "id": 2,
+    "username": "member-2"
+  },
+  {
+    "name": "Ready for test",
+    "slug": "ready-for-test",
+    "subject": "Ask Member 1 or Member 1 about the test for review"
+  }
+]
+`
+	if got["members.json"] != want {
+		t.Errorf("got\n%s\nwant\n%s", got["members.json"], want)
+	}
+}
+
 func TestAnonymiseNumbersTeamMembersByIDNotByOrder(t *testing.T) {
 	// The story names Jane before any object tells her username.
 	stories := taigarec.Fixture{Name: "stories.json", Body: []byte(`[
@@ -236,6 +267,26 @@ func TestAnonymiseReplacesUsernamesOnlyAsWholeWords(t *testing.T) {
 `
 	if got["members.json"] != want {
 		t.Errorf("got\n%s\nwant\n%s", got["members.json"], want)
+	}
+}
+
+func TestAnonymiseRedactsVideoconferenceRoomsAndProjectSecrets(t *testing.T) {
+	project := taigarec.Fixture{Name: "project.json", Body: []byte(`{
+		"videoconferences": "custom", "videoconferences_extra_data": "https://meet.example/rooms/abc-def/join",
+		"transfer_token": "17:abcdef", "userstories_csv_uuid": "0f8e7d6c", "tasks_csv_uuid": null}`)}
+
+	got := anonymise(t, taigarec.Anonymiser{}, project)
+
+	want := `{
+  "tasks_csv_uuid": null,
+  "transfer_token": "redacted",
+  "userstories_csv_uuid": "redacted",
+  "videoconferences": "custom",
+  "videoconferences_extra_data": "redacted"
+}
+`
+	if got["project.json"] != want {
+		t.Errorf("got\n%s\nwant\n%s", got["project.json"], want)
 	}
 }
 

@@ -39,10 +39,15 @@ type Anonymiser struct {
 
 const redactedURL = "https://media.example.invalid/redacted.png"
 
-// redactedKeys are the keys whose string values are replaced as a whole.
+// redactedKeys are the keys whose string values are replaced as a whole, as
+// are those of keys ending in "_uuid" (e.g. the secret of a project's public
+// CSV export).
 var redactedKeys = map[string]bool{
 	"email": true, "bio": true, "gravatar_id": true, "uuid": true,
 	"description": true, "description_html": true,
+	// A project's video room, often a link anyone holding it can join.
+	"videoconferences_extra_data": true,
+	"transfer_token":              true,
 }
 
 // nameKeys are the keys holding a Team Member's full name.
@@ -51,6 +56,23 @@ var nameKeys = []string{"full_name", "full_name_display"}
 // minNamePart is the shortest part of a name replaced on its own; shorter
 // parts such as "Li" or "de" would replace ordinary words.
 const minNamePart = 3
+
+// templateWords are the words of at least minNamePart letters in the names
+// Taiga's default project templates give Statuses, points, priorities,
+// severities, issue types, roles and due date states. A name or name part
+// that is one of them stays in free text: replacing it would turn "Ready for
+// test" into "Ready Member 1 test", and the word alone does not identify
+// anybody. Name fields and usernames are still replaced, and so are longer
+// names that contain such a word.
+var templateWords = map[string]bool{
+	"archived": true, "back": true, "bug": true, "closed": true, "critical": true,
+	"default": true, "design": true, "done": true, "due": true, "enhancement": true,
+	"for": true, "front": true, "high": true, "important": true, "info": true,
+	"low": true, "minor": true, "needs": true, "new": true, "normal": true,
+	"owner": true, "past": true, "postponed": true, "product": true, "progress": true,
+	"question": true, "ready": true, "rejected": true, "soon": true, "stakeholder": true,
+	"test": true, "wishlist": true,
+}
 
 func usernamePseudonym(n int) string { return fmt.Sprintf("member-%d", n) }
 func namePseudonym(n int) string     { return fmt.Sprintf("Member %d", n) }
@@ -227,7 +249,7 @@ func (s *scrubber) field(key, v string) string {
 		return usernamePseudonym(s.people.usernames[v])
 	case slices.Contains(nameKeys, key):
 		return namePseudonym(s.people.names[v])
-	case redactedKeys[key]:
+	case redactedKeys[key], strings.HasSuffix(key, "_uuid"):
 		return "redacted"
 	case key == "photo" || key == "big_photo" || strings.HasSuffix(key, "_url"):
 		return redactedURL
@@ -283,11 +305,13 @@ func newTextReplacer(p people, extra map[string]string) *textReplacer {
 	}
 	names := slices.Sorted(maps.Keys(p.names))
 	for _, name := range names {
-		add(name, textEntry{replacement: namePseudonym(p.names[name]), wholeWord: true})
+		if !templateWords[strings.ToLower(name)] {
+			add(name, textEntry{replacement: namePseudonym(p.names[name]), wholeWord: true})
+		}
 	}
 	for _, name := range names {
 		for _, part := range strings.FieldsFunc(name, func(r rune) bool { return !isWordRune(r) }) {
-			if utf8.RuneCountInString(part) >= minNamePart {
+			if utf8.RuneCountInString(part) >= minNamePart && !templateWords[strings.ToLower(part)] {
 				add(part, textEntry{replacement: namePseudonym(p.names[name]), wholeWord: true})
 			}
 		}
