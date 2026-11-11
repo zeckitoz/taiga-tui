@@ -3,6 +3,7 @@ package taiga
 import (
 	"errors"
 	"fmt"
+	"net/http"
 )
 
 // Typed errors returned by the Taiga client. Callers match them with
@@ -50,3 +51,7 @@ func (e *RejectedError) Error() string {
 }
 
 func (e *RejectedError) Unwrap() error { return e.Err }
+
+// InvalidInput reports whether Taiga rejected the input as malformed, such as
+// a blank field, rather than as wrong credentials or an invalid token.
+func (e *RejectedError) InvalidInput() bool { return e.Code == http.StatusBadRequest }

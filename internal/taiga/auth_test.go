@@ -275,6 +275,10 @@ func TestRefreshRejectionCarriesTaigasReason(t *testing.T) {
 			if err == nil || err.Error() != tt.wantMsg {
 				t.Errorf("got %q, want %q", err, tt.wantMsg)
 			}
+			rerr, ok := errors.AsType[*taiga.RejectedError](err)
+			if !ok || rerr.Code != tt.status {
+				t.Errorf("got %v, want RejectedError with code %d", err, tt.status)
+			}
 		})
 	}
 }

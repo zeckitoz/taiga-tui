@@ -157,13 +157,14 @@ func TestSavingTokensShowsKeyringSpinner(t *testing.T) {
 
 func TestFailedLoginShowsErrorAndClearsPassword(t *testing.T) {
 	tests := []struct {
-		name string
-		err  error
-		want string
+		name   string
+		err    error
+		want   string
+		golden string
 	}{
-		{name: "invalid", err: taiga.ErrInvalidCredentials, want: "Invalid username or password"},
+		{name: "invalid", err: taiga.ErrInvalidCredentials, want: "Invalid username or password", golden: "login_invalid"},
 		{name: "invalid with reason", err: &taiga.RejectedError{Code: 401, Reason: "No active account found with the given credentials", Err: taiga.ErrInvalidCredentials}, want: "Invalid username or password"},
-		{name: "rejected", err: &taiga.RejectedError{Code: 400, Reason: "username: This field may not be blank.", Err: taiga.ErrInvalidCredentials}, want: "Login rejected: username: This field may not be blank."},
+		{name: "rejected", err: &taiga.RejectedError{Code: 400, Reason: "username: This field may not be blank.", Err: taiga.ErrInvalidCredentials}, want: "Login rejected: username: This field may not be blank.", golden: "login_rejected"},
 		{name: "rejected without reason", err: &taiga.RejectedError{Code: 400, Err: taiga.ErrInvalidCredentials}, want: "Invalid username or password"},
 		{name: "unreachable", err: fmt.Errorf("%w: dial tcp: connection refused", taiga.ErrUnreachable), want: "Cannot reach taiga.example.org: no connection"},
 		{name: "timeout", err: taiga.ErrTimeout, want: "Cannot reach taiga.example.org: timed out"},
@@ -187,11 +188,8 @@ func TestFailedLoginShowsErrorAndClearsPassword(t *testing.T) {
 			if view := h.plainView(); !strings.Contains(words(view), tt.want) {
 				t.Errorf("view lacks %q:\n%s", tt.want, view)
 			}
-			switch tt.name {
-			case "invalid":
-				h.golden("login_invalid")
-			case "rejected":
-				h.golden("login_rejected")
+			if tt.golden != "" {
+				h.golden(tt.golden)
 			}
 		})
 	}

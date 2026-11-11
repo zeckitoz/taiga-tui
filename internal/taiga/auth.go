@@ -117,13 +117,13 @@ func (a *AuthAPI) Refresh(ctx context.Context, refresh string) (Tokens, error) {
 // authStatusError maps the status code of an auth call to a typed error.
 // Taiga rejects the credentials or token sent with a 400 or 401, which yields a
 // RejectedError wrapping rejected and carrying Taiga's reason from body; the
-// secrets sent never appear in that reason.
-func authStatusError(code int, body []byte, rejected error, secrets ...string) error {
+// secret sent never appears in that reason.
+func authStatusError(code int, body []byte, rejected error, secret string) error {
 	switch {
 	case code == http.StatusOK:
 		return nil
 	case code == http.StatusUnauthorized, code == http.StatusBadRequest:
-		return &RejectedError{Code: code, Reason: rejectionReason(body, secrets), Err: rejected}
+		return &RejectedError{Code: code, Reason: rejectionReason(body, secret), Err: rejected}
 	case code >= 500:
 		return &ServerError{Code: code}
 	}
@@ -135,10 +135,12 @@ const maxReasonLength = 200
 
 // rejectionReason extracts Taiga's reason from the body of a rejected auth
 // call: its _error_message, else its detail, else its first field error as
-// "<field>: <message>". It returns "" for a body without any of them or one
-// that is not a JSON object. The reason is one line of at most
-// maxReasonLength characters with every secret replaced by "[redacted]".
-func rejectionReason(body []byte, secrets []string) string {
+// "<field>: <message>". Fields starting with "_", such as Taiga's _error_type,
+// and the "code" that accompanies a detail are metadata, not field errors. It
+// returns "" for a body without any of them or one that is not a JSON object.
+// The reason is one line of at most maxReasonLength characters with every
+// occurrence of secret replaced by "[redacted]".
+func rejectionReason(body []byte, secret string) string {
 	fields, ok := objectFields(body)
 	if !ok {
 		return ""
@@ -157,10 +159,8 @@ func rejectionReason(body []byte, secrets []string) string {
 		}
 	}
 	reason = cmp.Or(reason, detail, field)
-	for _, s := range secrets {
-		if s != "" {
-			reason = strings.ReplaceAll(reason, s, "[redacted]")
-		}
+	if secret != "" {
+		reason = strings.ReplaceAll(reason, secret, "[redacted]")
 	}
 	reason = strings.Join(strings.Fields(reason), " ")
 	if utf8.RuneCountInString(reason) > maxReasonLength {
