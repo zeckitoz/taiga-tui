@@ -148,17 +148,17 @@ func TestKanbanLoadsUserStoriesOfActiveStatuses(t *testing.T) {
 	}
 	want := []domain.UserStory{
 		{
-			ID: 10213, Ref: 1, Title: "A", Status: 2951,
+			ID: 10213, Ref: 1, Title: "A", Status: 2951, SprintName: "Sprint 1",
 			Assignees: []int64{386, 368}, KanbanOrder: 1794413075166346, Version: 7,
 			Tasks: domain.TaskProgress{Done: 1, Total: 2},
 		},
-		{ID: 10214, Ref: 2, Title: "B", Status: 2949, KanbanOrder: 1794413084345230, Version: 1},
+		{ID: 10214, Ref: 2, Title: "B", Status: 2949, SprintName: "Sprint 1", KanbanOrder: 1794413084345230, Version: 1},
 		{
-			ID: 10215, Ref: 3, Title: "C", Status: 2952,
+			ID: 10215, Ref: 3, Title: "C", Status: 2952, SprintName: "Sprint 1",
 			Assignees: []int64{386}, KanbanOrder: 1794413108582883, Version: 3,
 			Tasks: domain.TaskProgress{Total: 1},
 		},
-		{ID: 10216, Ref: 4, Title: "D", Status: 2953, Assignees: []int64{368}, KanbanOrder: 1794413124555477, Version: 1},
+		{ID: 10216, Ref: 4, Title: "D", Status: 2953, SprintName: "Sprint 1", Assignees: []int64{368}, KanbanOrder: 1794413124555477, Version: 1},
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("got  %+v\nwant %+v", got, want)
@@ -170,6 +170,25 @@ func TestKanbanLoadsUserStoriesOfActiveStatuses(t *testing.T) {
 	}
 	if p := req.Header.Get("x-disable-pagination"); p != "1" {
 		t.Errorf("x-disable-pagination %q", p)
+	}
+}
+
+func TestUserStoryLoadsRecordedUserStory(t *testing.T) {
+	srv := newFixtureServer(t, map[string]string{"/api/v1/userstories/10213": "userstory.json"})
+
+	got, err := taiga.NewClient(srv.URL, staticToken("t")).UserStory(t.Context(), 10213)
+
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Unlike the list, a single User Story comes with "tasks": [], so its
+	// task progress is unknown here. The recording redacts descriptions.
+	want := domain.UserStory{
+		ID: 10213, Ref: 1, Title: "A", Status: 2951, SprintName: "Sprint 1",
+		Assignees: []int64{386, 368}, KanbanOrder: 1794413075166346, Version: 7,
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("got  %+v\nwant %+v", got, want)
 	}
 }
 
@@ -202,6 +221,34 @@ func TestKanbanCountsNoTasksWhenTaigaSendsNull(t *testing.T) {
 	want := []domain.UserStory{{ID: 502, Ref: 15, Title: "Product search", Status: 101, KanbanOrder: 1, Version: 1}}
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("got  %+v\nwant %+v", got, want)
+	}
+}
+
+func TestUserStoryLoadsOneUserStoryWithDescription(t *testing.T) {
+	var path string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		path = r.URL.Path
+		_, _ = w.Write([]byte(`{"id": 501, "ref": 12, "subject": "Checkout with credit card", "status": 101,
+			"milestone": null, "milestone_name": null, "assigned_to": 43, "assigned_users": [42, 43],
+			"kanban_order": 20, "version": 4, "description": "Pay with *Visa*.\n\nNo PayPal yet."}`))
+	}))
+	t.Cleanup(srv.Close)
+
+	got, err := taiga.NewClient(srv.URL, staticToken("t")).UserStory(t.Context(), 501)
+
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := domain.UserStory{
+		ID: 501, Ref: 12, Title: "Checkout with credit card", Status: 101,
+		Assignees: []int64{43, 42}, KanbanOrder: 20, Version: 4,
+		Description: "Pay with *Visa*.\n\nNo PayPal yet.",
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("got  %+v\nwant %+v", got, want)
+	}
+	if path != "/api/v1/userstories/501" {
+		t.Errorf("path %q", path)
 	}
 }
 

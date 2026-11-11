@@ -22,6 +22,7 @@ The tests rely on these cases, so keep them when you change the project:
 - A Sprint whose date range contains the recording date.
 - User Story Statuses from the Scrum template, with a WIP limit of 3 on "In progress", "Done" closed and "Archived" archived.
 - User Story A in "In progress" with two Assignees, where `assigned_to` is not the first entry of `assigned_users`, and two Tasks: one closed with an Assignee, one open without.
+  It has a description, which `userstory.json` records as `redacted`.
   The web UI makes the first Assignee added `assigned_to`, while `assigned_users` is sorted by ID.
   If `assigned_to` comes out first, remove that Assignee and add them again.
 - User Story B in "New" with no Assignee and no Tasks.

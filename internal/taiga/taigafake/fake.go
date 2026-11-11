@@ -144,7 +144,7 @@ func (f *Fake) Project(ctx context.Context, slug string) (domain.Project, error)
 }
 
 // Kanban implements the Taiga interface. Like Taiga, it leaves out User
-// Stories in archived Statuses.
+// Stories in archived Statuses and the descriptions.
 func (f *Fake) Kanban(ctx context.Context, projectID int64) ([]domain.UserStory, error) {
 	if err := f.enter(ctx, "Kanban"); err != nil {
 		return nil, err
@@ -158,10 +158,29 @@ func (f *Fake) Kanban(ctx context.Context, projectID int64) ([]domain.UserStory,
 	var out []domain.UserStory
 	for _, s := range f.stories[projectID] {
 		if !archived(f.projects[i], s.Status) {
+			s.Description = ""
 			out = append(out, s)
 		}
 	}
 	return out, nil
+}
+
+// UserStory implements the Taiga interface. It finds the User Story in any
+// project, including its description.
+func (f *Fake) UserStory(ctx context.Context, id int64) (domain.UserStory, error) {
+	if err := f.enter(ctx, "UserStory"); err != nil {
+		return domain.UserStory{}, err
+	}
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	for _, stories := range f.stories {
+		for _, s := range stories {
+			if s.ID == id {
+				return s, nil
+			}
+		}
+	}
+	return domain.UserStory{}, taiga.ErrNotFound
 }
 
 func archived(p domain.Project, status int64) bool {

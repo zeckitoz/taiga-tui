@@ -21,7 +21,7 @@ func newFake() *taigafake.Fake {
 			{ID: 2, Name: "Old", Archived: true},
 		},
 	},
-		domain.UserStory{ID: 10, Status: 1},
+		domain.UserStory{ID: 10, Status: 1, Description: "Pay by card."},
 		domain.UserStory{ID: 11, Status: 2},
 	)
 	return f
@@ -32,6 +32,21 @@ func TestKanbanLeavesOutArchivedStatusesLikeTaiga(t *testing.T) {
 
 	if err != nil || len(got) != 1 || got[0].ID != 10 {
 		t.Errorf("got %+v, %v", got, err)
+	}
+}
+
+func TestOnlyASingleUserStoryCarriesItsDescriptionLikeTaiga(t *testing.T) {
+	f := newFake()
+
+	list, err := f.Kanban(t.Context(), 7)
+	if err != nil || list[0].Description != "" {
+		t.Errorf("Kanban: %+v, %v", list, err)
+	}
+	if s, err := f.UserStory(t.Context(), 10); err != nil || s.Description != "Pay by card." {
+		t.Errorf("UserStory: %+v, %v", s, err)
+	}
+	if _, err := f.UserStory(t.Context(), 99); !errors.Is(err, taiga.ErrNotFound) {
+		t.Errorf("unknown User Story: %v, want ErrNotFound", err)
 	}
 }
 

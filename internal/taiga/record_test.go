@@ -67,8 +67,16 @@ func TestRecordFixtures(t *testing.T) {
 		project, err = client.Project(ctx, slug)
 		return err
 	})
-	mustRecord(t, rec, "userstories_kanban.json", func() error {
-		_, err := client.Kanban(ctx, project.ID)
+	var stories []domain.UserStory
+	mustRecord(t, rec, "userstories_kanban.json", func() (err error) {
+		stories, err = client.Kanban(ctx, project.ID)
+		return err
+	})
+	if len(stories) == 0 {
+		t.Fatal("the test project has no User Stories on its Kanban Board")
+	}
+	mustRecord(t, rec, "userstory.json", func() error {
+		_, err := client.UserStory(ctx, stories[0].ID)
 		return err
 	})
 

@@ -2,23 +2,23 @@
  ● New 3 │ ● Ready 0 │ ● In progress 1/3 │ ● Ready for test 0 │ ● Done 1                            |
 ────────────────────────────────────────────────────────────────────────────────────────────────────|
  ▍ #21 Order history                                                                    AE  ▰▰▰ 3/3 |
-|
-|
-|
-|
-|
-|
-|
-|
-|
-|
-|
-|
-|
-|
-|
-|
-|
-|
-|
- ←/→ status · ↑/↓ move · r refresh · q quit                                                         |
+                                                                                                    |
+                                                                                                    |
+                                                                                                    |
+                                                                                                    |
+                                                                                                    |
+                                                                                                    |
+                                                                                                    |
+                                                                                                    |
+                                                                                                    |
+────────────────────────────────────────────────────────────────────────────────────────────────────|
+ #21 Order history                                                                                  |
+ Status     ● In progress                                                                           |
+ Assignees  Alice Example (you)                                                                     |
+ Sprint     not in a sprint                                                                         |
+ Tasks      ▰▰▰ 3/3                                                                                 |
+                                                                                                    |
+ No description                                                                                     |
+                                                                                                    |
+                                                                                                    |
+ ←/→ status · ↑/↓ move · enter detail · r refresh · q quit                                          |

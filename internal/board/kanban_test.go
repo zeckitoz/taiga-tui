@@ -1,7 +1,9 @@
 package board_test
 
 import (
+	"errors"
 	"reflect"
+	"slices"
 	"testing"
 
 	"github.com/zeckitoz/taiga-tui/internal/board"
@@ -51,10 +53,10 @@ func TestRowsOfActiveTabAreSortedByKanbanOrder(t *testing.T) {
 	want := []board.Row{
 		{
 			ID: 11, Ref: 2, Title: "First", Mine: true, Selected: true,
-			Assignees: []board.Assignee{{Initials: "BK"}, {Initials: "AE", Mine: true}},
+			Assignees: []board.Assignee{{Name: "bkoch", Initials: "BK"}, {Name: "Alice Example", Initials: "AE", Mine: true}},
 			Tasks:     domain.TaskProgress{Done: 1, Total: 2},
 		},
-		{ID: 12, Ref: 3, Title: "Second", Assignees: []board.Assignee{{Initials: "CM"}}},
+		{ID: 12, Ref: 3, Title: "Second", Assignees: []board.Assignee{{Name: "Carla de la Mar", Initials: "CM"}}},
 		{ID: 10, Ref: 1, Title: "Third"},
 	}
 	if got := k.Rows(); !reflect.DeepEqual(got, want) {
@@ -62,11 +64,11 @@ func TestRowsOfActiveTabAreSortedByKanbanOrder(t *testing.T) {
 	}
 }
 
-func TestUnknownMemberHasPlaceholderInitials(t *testing.T) {
+func TestUnknownMemberHasPlaceholderNameAndInitials(t *testing.T) {
 	k := board.NewKanban(project, stories, me).NextTab()
 
 	rows := k.Rows()
-	if len(rows) != 1 || !reflect.DeepEqual(rows[0].Assignees, []board.Assignee{{Initials: "??"}}) {
+	if len(rows) != 1 || !reflect.DeepEqual(rows[0].Assignees, []board.Assignee{{Name: "Unknown member", Initials: "??"}}) {
 		t.Errorf("got %+v", rows)
 	}
 }
@@ -166,5 +168,112 @@ func TestSelectedIndexMatchesSelectedRow(t *testing.T) {
 	}
 	if got := k.PrevTab().SelectedIndex(); got != -1 {
 		t.Errorf("empty tab: %d", got)
+	}
+}
+
+func TestDetailDescribesSelectedUserStory(t *testing.T) {
+	withSprint := slices.Clone(stories)
+	withSprint[1].SprintName = "Sprint 4"
+	k := board.NewKanban(project, withSprint, me)
+
+	got, ok := k.Detail()
+
+	want := board.Detail{
+		ID: 11, Ref: 2, Title: "First",
+		Status:     project.UserStoryStatuses[0],
+		Assignees:  []board.Assignee{{Name: "bkoch", Initials: "BK"}, {Name: "Alice Example", Initials: "AE", Mine: true}},
+		SprintName: "Sprint 4",
+		Tasks:      domain.TaskProgress{Done: 1, Total: 2},
+	}
+	if !ok || !reflect.DeepEqual(got, want) {
+		t.Errorf("got  %+v\nwant %+v", got, want)
+	}
+}
+
+func TestNoDetailOnEmptyTab(t *testing.T) {
+	k := board.NewKanban(project, stories, me).PrevTab()
+
+	if d, ok := k.Detail(); ok {
+		t.Errorf("got %+v", d)
+	}
+}
+
+func TestLoadDetailRequestsDescriptionOfSelectedUserStoryOnce(t *testing.T) {
+	k := board.NewKanban(project, stories, me)
+
+	k, load, ok := k.LoadDetail()
+	if !ok || load.ID != 11 {
+		t.Fatalf("got %+v, %v", load, ok)
+	}
+	if d, _ := k.Detail(); d.Description.State != board.DescriptionLoading {
+		t.Errorf("description %+v while loading", d.Description)
+	}
+	if _, again, ok := k.LoadDetail(); ok {
+		t.Errorf("requested again while loading: %+v", again)
+	}
+	if _, _, ok := k.PrevTab().LoadDetail(); ok {
+		t.Error("requested a description on an empty tab")
+	}
+}
+
+func TestLoadedDescriptionAppearsInDetail(t *testing.T) {
+	k, load, _ := board.NewKanban(project, stories, me).LoadDetail()
+
+	k = k.UserStoryLoaded(load, domain.UserStory{ID: 11, Description: "Pay by card."})
+
+	d, _ := k.Detail()
+	if want := (board.Description{State: board.DescriptionLoaded, Text: "Pay by card."}); d.Description != want {
+		t.Errorf("got %+v", d.Description)
+	}
+	if _, _, ok := k.LoadDetail(); ok {
+		t.Error("requested a loaded description again")
+	}
+}
+
+func TestFailedDescriptionLoadIsReportedAndRetried(t *testing.T) {
+	k, load, _ := board.NewKanban(project, stories, me).LoadDetail()
+	boom := errors.New("timed out")
+
+	k = k.UserStoryFailed(load, boom)
+
+	d, _ := k.Detail()
+	if d.Description.State != board.DescriptionFailed || !errors.Is(d.Description.Err, boom) {
+		t.Errorf("got %+v", d.Description)
+	}
+	if _, retry, ok := k.LoadDetail(); !ok || retry.ID != 11 {
+		t.Errorf("failed load not retried: %+v, %v", retry, ok)
+	}
+}
+
+func TestReloadRequestsDescriptionAgainAndDropsStaleResults(t *testing.T) {
+	k, old, _ := board.NewKanban(project, stories, me).LoadDetail()
+	k = k.UserStoryLoaded(old, domain.UserStory{ID: 11, Description: "Old text."})
+
+	k = k.Reload(stories)
+	k, fresh, ok := k.LoadDetail()
+	if !ok || fresh.ID != 11 {
+		t.Fatalf("not requested again after reload: %+v, %v", fresh, ok)
+	}
+	if d, _ := k.Detail(); d.Description.State != board.DescriptionLoaded || d.Description.Text != "Old text." {
+		t.Errorf("old text not kept while reloading: %+v", d.Description)
+	}
+	k = k.UserStoryLoaded(old, domain.UserStory{ID: 11, Description: "Stale."})
+	k = k.UserStoryFailed(old, errors.New("stale"))
+	if d, _ := k.Detail(); d.Description.Text != "Old text." || d.Description.Err != nil {
+		t.Errorf("stale result applied: %+v", d.Description)
+	}
+	k = k.UserStoryLoaded(fresh, domain.UserStory{ID: 11, Description: "New text."})
+	if d, _ := k.Detail(); d.Description.Text != "New text." {
+		t.Errorf("fresh result not applied: %+v", d.Description)
+	}
+}
+
+func TestLoadDetailNeverChangesTheReceiver(t *testing.T) {
+	k := board.NewKanban(project, stories, me)
+
+	_, _, _ = k.LoadDetail()
+
+	if _, _, ok := k.LoadDetail(); !ok {
+		t.Error("the first LoadDetail changed the receiver")
 	}
 }
