@@ -1020,7 +1020,11 @@ func (a App) boardKeys() []string {
 	case a.board == config.BoardKanban:
 		return kanbanKeys(a.project.BacklogEnabled)
 	case !a.hasTaskboard:
-		return []string{": menu", "r refresh", "q quit"}
+		keys := []string{": menu", "r refresh"}
+		if a.project.KanbanEnabled {
+			keys = append(keys, "b kanban")
+		}
+		return append(keys, "q quit")
 	}
 	return taskboardKeys(a.taskboard, a.project.KanbanEnabled)
 }

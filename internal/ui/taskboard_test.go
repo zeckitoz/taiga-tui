@@ -567,3 +567,15 @@ func TestNarrowHeaderLeavesOutDateRangeAndKeepsName(t *testing.T) {
 		t.Errorf("header %q", header)
 	}
 }
+
+func TestNoSprintsFooterOffersKanbanWhenEnabled(t *testing.T) {
+	api := newFake()
+	api.SetSprints(webShop.ID)
+
+	h := onTaskboardWith(t, api, 100, 24)
+
+	lines := strings.Split(h.plainView(), "\n")
+	if foot := lines[len(lines)-1]; !strings.Contains(foot, "b kanban") {
+		t.Errorf("footer %q", foot)
+	}
+}
