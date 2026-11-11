@@ -272,17 +272,18 @@ func (k Kanban) selected() (domain.UserStory, bool) {
 	return k.active()[i], true
 }
 
-// ChangeStatus moves the selected User Story to the next (dir 1) or
-// previous (dir -1) active Status right away, with the cursor following it
-// into its new tab, and returns the effect of saving the change. It returns
-// a Rejection instead if the change cannot be made, and neither if no User
-// Story is selected.
-func (k Kanban) ChangeStatus(dir int) (Kanban, Effect, error) {
+// ChangeStatus moves the selected User Story to the active Status next to
+// its own in direction d right away, with the cursor following it into its
+// new tab, and returns the effect of saving the change, which the App
+// records in sent once it sends it. It returns a Rejection instead if the
+// change cannot be made, and neither if no User Story is selected.
+func (k Kanban) ChangeStatus(d Direction, sent Sent) (Kanban, Effect, error) {
 	s, ok := k.selected()
 	if !ok || !k.loaded {
 		return k, nil, nil
 	}
-	sv, save, err := k.saves.changeStatus(k.project, UserStoryItem, s.ID, s.Ref, s.Status, s.Version, dir)
+	it := workItem{kind: UserStoryItem, id: s.ID, ref: s.Ref, status: s.Status, version: s.Version}
+	sv, save, err := k.saves.changeStatus(k.project, sent, it, d)
 	if err != nil {
 		return k, nil, err
 	}
@@ -297,11 +298,18 @@ func (k Kanban) StatusSaved(save SaveStatus, saved domain.UserStory) (Kanban, bo
 	if k.saves, ok = k.saves.end(save); !ok {
 		return k, false
 	}
+	return k.Replace(saved), true
+}
+
+// Replace takes the User Story as Taiga saved it if the board shows it,
+// e.g. from a save whose result arrived after the Team Member came back to
+// the board, so that the next change sends its current version.
+func (k Kanban) Replace(saved domain.UserStory) Kanban {
 	if i := slices.IndexFunc(k.stories, func(s domain.UserStory) bool { return s.ID == saved.ID }); i >= 0 {
 		k.stories = slices.Clone(k.stories) // never share the list with the receiver
 		k.stories[i] = saved
 	}
-	return k.regrouped(), true
+	return k.regrouped()
 }
 
 // StatusNotSaved undoes the change of save, with the cursor following the

@@ -13,10 +13,10 @@ import (
 	"github.com/zeckitoz/taiga-tui/internal/taiga"
 )
 
-// changeStatus moves the selected row of the board shown to the next (dir
-// 1) or previous (dir -1) Status, or tells why it cannot.
-func (a App) changeStatus(dir int) (App, tea.Cmd) {
-	a, eff, err := a.shownBoard().changeStatus(a, dir)
+// changeStatus moves the selected row of the board shown to the Status
+// next to its own in direction d, or tells why it cannot.
+func (a App) changeStatus(d board.Direction) (App, tea.Cmd) {
+	a, eff, err := a.shownBoard().changeStatus(a, d)
 	if err != nil {
 		a.status = append(a.status, statusMsg{text: err.Error(), hint: true})
 	}
@@ -30,6 +30,7 @@ func (a App) changeStatus(dir int) (App, tea.Cmd) {
 func (a App) runEffect(eff board.Effect, on config.Board) (App, tea.Cmd) {
 	switch e := eff.(type) {
 	case board.SaveStatus:
+		a.sent = a.sent.Add(e)
 		return a, saveStatus(a.deps.Taiga, e, on)
 	case board.ReloadBoard:
 		if a.screen == screenBoard && a.board == on {
@@ -65,18 +66,35 @@ func saveStatus(api Taiga, save board.SaveStatus, on config.Board) tea.Cmd {
 // a change was undone. The board ignores results that no longer count,
 // e.g. after the Team Member left it.
 func (a App) statusSaved(msg statusSavedMsg) (tea.Model, tea.Cmd) {
+	a.sent = a.sent.Answered(msg.save)
 	a, eff, ok := boardOps(msg.on).statusSaved(a, msg)
 	if !ok {
+		if msg.err == nil {
+			// The Team Member left the board: the change took effect on the
+			// server anyway, and the next change needs its version.
+			return a.withSavedItem(msg), nil
+		}
 		return a, nil
 	}
 	if errors.Is(msg.err, taiga.ErrSessionExpired) {
 		return a.showLogin(), nil
 	}
-	if msg.err != nil {
+	// Off the board, e.g. in a picker, the board reloads when it opens again.
+	if msg.err != nil && a.screen == screenBoard {
 		a.status = append(a.status, saveFailure(msg.save.Ref, msg.err))
 	}
 	a.scrollBoard() // the status line takes rows from the list
 	return a.runEffect(eff, msg.on)
+}
+
+// withSavedItem gives both boards the item of a successful save whose
+// board ignored the result.
+func (a App) withSavedItem(msg statusSavedMsg) App {
+	if msg.save.Kind == board.TaskItem {
+		return a.withTaskboard(func(tb board.Taskboard) board.Taskboard { return tb.ReplaceTask(msg.task) })
+	}
+	a.kanban = a.kanban.Replace(msg.story)
+	return a.withTaskboard(func(tb board.Taskboard) board.Taskboard { return tb.ReplaceUserStory(msg.story) })
 }
 
 // saveFailureOf classifies the error of a save for the board, false if the
@@ -106,23 +124,28 @@ func saveFailure(ref int, err error) statusMsg {
 	return statusMsg{text: "Couldn't save " + item + ": " + reason(err), isErr: true, hint: true}
 }
 
-func (a App) changeKanbanStatus(dir int) (App, board.Effect, error) {
+// changeKanbanStatus changes the Status of the selected User Story of the
+// Kanban Board.
+func (a App) changeKanbanStatus(d board.Direction) (App, board.Effect, error) {
 	var eff board.Effect
 	var err error
-	a.kanban, eff, err = a.kanban.ChangeStatus(dir)
+	a.kanban, eff, err = a.kanban.ChangeStatus(d, a.sent)
 	return a, eff, err
 }
 
-func (a App) changeTaskboardStatus(dir int) (App, board.Effect, error) {
+// changeTaskboardStatus changes the Status of the selected row of the
+// Taskboard.
+func (a App) changeTaskboardStatus(d board.Direction) (App, board.Effect, error) {
 	tb, ok := a.sprints.Taskboard()
 	if !ok {
 		return a, nil, nil
 	}
-	tb, eff, err := tb.ChangeStatus(dir)
+	tb, eff, err := tb.ChangeStatus(d, a.sent)
 	a.sprints = a.sprints.WithTaskboard(tb)
 	return a, eff, err
 }
 
+// kanbanStatusSaved feeds the result of a save into the Kanban Board.
 func (a App) kanbanStatusSaved(msg statusSavedMsg) (App, board.Effect, bool) {
 	var eff board.Effect
 	ok := false
@@ -134,6 +157,7 @@ func (a App) kanbanStatusSaved(msg statusSavedMsg) (App, board.Effect, bool) {
 	return a, eff, ok
 }
 
+// taskboardStatusSaved feeds the result of a save into the Taskboard shown.
 func (a App) taskboardStatusSaved(msg statusSavedMsg) (App, board.Effect, bool) {
 	tb, has := a.sprints.Taskboard()
 	if !has {

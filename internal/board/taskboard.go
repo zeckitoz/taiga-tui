@@ -208,8 +208,8 @@ type itemRow struct {
 
 func (r itemRow) selectable() bool { return r.kind != RowNoTasks }
 
-// kind tells whether the item is a Task or a User Story.
-func (it item) kind() ItemKind {
+// itemKind tells whether the item is a Task or a User Story.
+func (it item) itemKind() ItemKind {
 	if it.task {
 		return TaskItem
 	}
@@ -273,7 +273,7 @@ func (t Taskboard) Rows() []TaskboardRow {
 			rows[i] = TaskboardRow{Kind: RowNoTasks}
 		}
 		rows[i].Selected = it.selectable() && it.item == t.cursor
-		rows[i].Saving = it.kind != RowNoTasks && t.saves.saving(it.item.kind(), it.item.id)
+		rows[i].Saving = it.kind != RowNoTasks && t.saves.saving(it.item.itemKind(), it.item.id)
 	}
 	return rows
 }
@@ -457,33 +457,43 @@ func (t Taskboard) TaskFailed(load LoadTask, err error) Taskboard {
 	return t
 }
 
-// ChangeStatus moves the selected Task or User Story to the next (dir 1) or
-// previous (dir -1) Status of its kind right away, keeping the row in
-// place, and returns the effect of saving the change. It returns a
-// Rejection instead if the change cannot be made, and neither if no item is
-// selected.
-func (t Taskboard) ChangeStatus(dir int) (Taskboard, Effect, error) {
+// selectedItem returns the selected Task or User Story, or false if no row
+// or the group of Tasks without User Story is selected.
+func (t Taskboard) selectedItem() (workItem, bool) {
 	i := t.SelectedIndex()
 	if i < 0 {
-		return t, nil, nil
+		return workItem{}, false
 	}
 	r := t.items()[i]
 	gr := t.groups[r.group]
-	var (
-		save SaveStatus
-		err  error
-		sv   saves
-	)
 	switch {
 	case r.kind == RowTask:
 		task := gr.tasks[r.task]
-		sv, save, err = t.saves.changeStatus(t.project, TaskItem, task.ID, task.Ref, task.Status, task.Version, dir)
+		return workItem{kind: TaskItem, id: task.ID, ref: task.Ref, status: task.Status, version: task.Version}, true
 	case gr.userStory.ID != 0:
 		us := gr.userStory
-		sv, save, err = t.saves.changeStatus(t.project, UserStoryItem, us.ID, us.Ref, us.Status, us.Version, dir)
-	default:
-		return t, nil, nil // the group of Tasks without User Story
+		return workItem{kind: UserStoryItem, id: us.ID, ref: us.Ref, status: us.Status, version: us.Version}, true
 	}
+	return workItem{}, false // the group of Tasks without User Story
+}
+
+// StatusSelected reports whether the selected row has a Status to change.
+func (t Taskboard) StatusSelected() bool {
+	_, ok := t.selectedItem()
+	return ok
+}
+
+// ChangeStatus moves the selected Task or User Story to the Status of its
+// kind next to its own in direction d right away, keeping the row in place,
+// and returns the effect of saving the change, which the App records in
+// sent once it sends it. It returns a Rejection instead if the change
+// cannot be made, and neither if no item is selected.
+func (t Taskboard) ChangeStatus(d Direction, sent Sent) (Taskboard, Effect, error) {
+	it, ok := t.selectedItem()
+	if !ok {
+		return t, nil, nil
+	}
+	sv, save, err := t.saves.changeStatus(t.project, sent, it, d)
 	if err != nil {
 		return t, nil, err
 	}
@@ -500,11 +510,7 @@ func (t Taskboard) TaskSaved(save SaveStatus, saved domain.Task) (Taskboard, Eff
 	if t.saves, ok = t.saves.end(save); !ok {
 		return t, nil, false
 	}
-	if i := slices.IndexFunc(t.content.Tasks, func(task domain.Task) bool { return task.ID == saved.ID }); i >= 0 {
-		t.content.Tasks = slices.Clone(t.content.Tasks) // never share the list with the receiver
-		t.content.Tasks[i] = saved
-	}
-	t = t.regrouped()
+	t = t.ReplaceTask(saved)
 	if saved.UserStory == 0 || !slices.ContainsFunc(t.content.UserStories, func(s domain.UserStory) bool { return s.ID == saved.UserStory }) {
 		return t, nil, true
 	}
@@ -518,7 +524,24 @@ func (t Taskboard) UserStorySaved(save SaveStatus, saved domain.UserStory) (Task
 	if t.saves, ok = t.saves.end(save); !ok {
 		return t, false
 	}
-	return t.withUserStory(saved).regrouped(), true
+	return t.ReplaceUserStory(saved), true
+}
+
+// ReplaceTask takes the Task as Taiga saved it if the Taskboard shows it,
+// e.g. from a save whose result arrived after the Team Member came back to
+// the Taskboard, so that the next change sends its current version.
+func (t Taskboard) ReplaceTask(saved domain.Task) Taskboard {
+	if i := slices.IndexFunc(t.content.Tasks, func(task domain.Task) bool { return task.ID == saved.ID }); i >= 0 {
+		t.content.Tasks = slices.Clone(t.content.Tasks) // never share the list with the receiver
+		t.content.Tasks[i] = saved
+	}
+	return t.regrouped()
+}
+
+// ReplaceUserStory takes the User Story as Taiga saved it if the Taskboard
+// shows it, like ReplaceTask.
+func (t Taskboard) ReplaceUserStory(saved domain.UserStory) Taskboard {
+	return t.withUserStory(saved).regrouped()
 }
 
 // StatusNotSaved undoes the change of save and returns the effect of

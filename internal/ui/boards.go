@@ -26,7 +26,7 @@ type boardView struct {
 	// changeStatus changes the Status of the selected row, statusSaved
 	// feeds the result of its save back, and dropSaves forgets the saves
 	// when the Team Member leaves the board.
-	changeStatus func(App, int) (App, board.Effect, error)
+	changeStatus func(App, board.Direction) (App, board.Effect, error)
 	statusSaved  func(App, statusSavedMsg) (App, board.Effect, bool)
 	dropSaves    func(App) App
 	// scroll keeps the selected row visible.

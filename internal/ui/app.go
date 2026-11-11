@@ -202,6 +202,8 @@ type App struct {
 	// detailOpen shows the detail view, which is open by default. It is UI
 	// state only and never persisted.
 	detailOpen bool
+	// sent tracks the saves waiting for their results on every board.
+	sent board.Sent
 	// paletteOpen shows the command palette over the board.
 	paletteOpen bool
 	palette     palette
@@ -244,7 +246,8 @@ func (a App) Init() tea.Cmd {
 func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	m, cmd := a.update(msg)
 	next := m.(App)
-	return next, tea.Batch(cmd, next.syncSaving())
+	saving := next.syncSaving()
+	return next, tea.Batch(cmd, saving)
 }
 
 // syncSaving runs the spinner of the saving rows while a board saves.
@@ -940,9 +943,9 @@ func (a App) updateKanban(key tea.KeyPressMsg) (App, tea.Cmd) {
 			return a.loadKanban()
 		}
 	case "shift+left", "H":
-		return a.changeStatus(-1)
+		return a.changeStatus(board.Previous)
 	case "shift+right", "L":
-		return a.changeStatus(1)
+		return a.changeStatus(board.Next)
 	case "left", "h":
 		a.kanban = a.kanban.PrevTab()
 	case "right", "l":
@@ -977,9 +980,9 @@ func (a App) updateTaskboard(key tea.KeyPressMsg) (App, tea.Cmd) {
 	case "down", "j":
 		tb = tb.CursorDown()
 	case "shift+left", "H":
-		return a.changeStatus(-1)
+		return a.changeStatus(board.Previous)
 	case "shift+right", "L":
-		return a.changeStatus(1)
+		return a.changeStatus(board.Next)
 	case "left", "h":
 		tb = tb.Left()
 	case "right", "l":
@@ -1256,12 +1259,7 @@ func (a App) taskboardBody(h int) string {
 
 func (a App) boardKeys() []string { return a.shownBoard().keys(a) }
 
-func (a App) kanbanFooter() []string {
-	if a.kanban.SelectedIndex() < 0 {
-		return kanbanKeys[1:] // no User Story to change
-	}
-	return kanbanKeys
-}
+func (a App) kanbanFooter() []string { return kanbanKeys(a.kanban) }
 
 func (a App) taskboardFooter() []string {
 	if tb, ok := a.sprints.Taskboard(); ok {

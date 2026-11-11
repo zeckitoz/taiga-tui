@@ -18,7 +18,7 @@
  No description                                                                                     |
                                                                                                     |
                                                                                                     |
- ⇧←/→ H/L  move to previous / next status     r         refresh                                     |
- ←/→ h/l   previous / next tab                : ctrl+k  menu: boards, sprints, projects             |
- ↑/↓ j/k   move                               ? esc     close help                                  |
- enter     show / hide detail                 q ctrl+c  quit                                        |
+ ⇧←/→ H/L  change to previous / next status    r         refresh                                    |
+ ←/→ h/l   previous / next tab                 : ctrl+k  menu: boards, sprints, projects            |
+ ↑/↓ j/k   move                                ? esc     close help                                 |
+ enter     show / hide detail                  q ctrl+c  quit                                       |

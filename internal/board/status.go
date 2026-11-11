@@ -105,19 +105,81 @@ func statusesOf(p domain.Project, kind ItemKind) []domain.Status {
 	return slices.DeleteFunc(slices.Clone(p.UserStoryStatuses), func(s domain.Status) bool { return s.Archived })
 }
 
-// adjacent returns the ID of the Status after (dir 1) or before (dir -1)
-// the Status current among statuses.
-func adjacent(statuses []domain.Status, current int64, dir int) (int64, error) {
+// Direction tells whether a Status Change goes to the previous or the next
+// Status.
+type Direction int
+
+// The directions of a Status Change in Taiga order.
+const (
+	Previous Direction = -1
+	Next     Direction = 1
+)
+
+// adjacent returns the ID of the Status next to the Status current among
+// statuses in direction d.
+func adjacent(statuses []domain.Status, current int64, d Direction) (int64, error) {
 	i := slices.IndexFunc(statuses, func(s domain.Status) bool { return s.ID == current })
+	j := i + int(d)
 	switch {
 	case i < 0:
 		return 0, ErrUnknownStatus
-	case i+dir < 0:
+	case j < 0:
 		return 0, ErrFirstStatus
-	case i+dir >= len(statuses):
+	case j >= len(statuses):
 		return 0, ErrLastStatus
 	}
-	return statuses[i+dir].ID, nil
+	return statuses[j].ID, nil
+}
+
+// Sent tracks the saves sent to Taiga whose results have not arrived yet,
+// on every board and in every project. The App keeps one for the whole run
+// and records each save it sends and each result it receives. It locks an
+// item until the result of its save arrives, even after the Team Member
+// left the board, so that their own requests never conflict with each
+// other, and it numbers the saves so that a result matches only its own
+// save. Its methods return a new Sent and never change the receiver.
+type Sent struct {
+	// generation is that of the latest save sent; it never goes back.
+	generation int
+	byItem     map[itemKey]int
+}
+
+// Add records that save was sent.
+func (s Sent) Add(save SaveStatus) Sent {
+	s.generation = max(s.generation, save.Generation)
+	s.byItem = maps.Clone(s.byItem) // never share the map with the receiver
+	if s.byItem == nil {
+		s.byItem = map[itemKey]int{}
+	}
+	s.byItem[itemKey{save.Kind, save.ID}] = save.Generation
+	return s
+}
+
+// Answered records that the result of save arrived.
+func (s Sent) Answered(save SaveStatus) Sent {
+	key := itemKey{save.Kind, save.ID}
+	if s.byItem[key] != save.Generation {
+		return s
+	}
+	s.byItem = maps.Clone(s.byItem)
+	delete(s.byItem, key)
+	return s
+}
+
+// saving reports whether a save of the item of kind with the given ID is
+// waiting for its result.
+func (s Sent) saving(kind ItemKind, id int64) bool {
+	_, ok := s.byItem[itemKey{kind, id}]
+	return ok
+}
+
+// workItem is what a Status Change needs to know of a User Story or Task.
+type workItem struct {
+	kind    ItemKind
+	id      int64
+	ref     int
+	status  int64
+	version int
 }
 
 // itemKey identifies a work item across both kinds.
@@ -126,37 +188,33 @@ type itemKey struct {
 	id   int64
 }
 
-// saves holds the Status Changes being saved, one per item: the item shows
-// its new Status until the result arrives, and further changes to it are
-// refused. Its methods return a new store and never change the receiver.
+// saves holds the Status Changes of a board being saved, one per item: the
+// item shows its new Status until the result arrives. Its methods return a
+// new store and never change the receiver.
 type saves struct {
-	// generation counts the saves; it never goes back, so that a result
-	// matches only the save that asked for it.
-	generation int
-	byItem     map[itemKey]SaveStatus
+	byItem map[itemKey]SaveStatus
 }
 
-// changeStatus starts the Status Change of the item of kind with the given
-// ID, ref, Status and version in direction dir, unless the Team Member may
-// not change it, it is still saving or its Status has no Status next to it there.
-func (s saves) changeStatus(p domain.Project, kind ItemKind, id int64, ref int, status int64, version, dir int) (saves, SaveStatus, error) {
-	if !mayModify(p, kind) {
-		return s, SaveStatus{}, noPermission(kind)
+// changeStatus starts the Status Change of it in direction d, unless the
+// Team Member may not change it, a save of it is still waiting for its
+// result in sent, or its Status has no Status next to it in d.
+func (s saves) changeStatus(p domain.Project, sent Sent, it workItem, d Direction) (saves, SaveStatus, error) {
+	if !mayModify(p, it.kind) {
+		return s, SaveStatus{}, noPermission(it.kind)
 	}
-	if s.saving(kind, id) {
+	if sent.saving(it.kind, it.id) || s.saving(it.kind, it.id) {
 		return s, SaveStatus{}, ErrStillSaving
 	}
-	to, err := adjacent(statusesOf(p, kind), status, dir)
+	to, err := adjacent(statusesOf(p, it.kind), it.status, d)
 	if err != nil {
 		return s, SaveStatus{}, err
 	}
-	s.generation++
-	save := SaveStatus{Kind: kind, ID: id, Ref: ref, Status: to, Version: version, Generation: s.generation}
+	save := SaveStatus{Kind: it.kind, ID: it.id, Ref: it.ref, Status: to, Version: it.version, Generation: sent.generation + 1}
 	s.byItem = maps.Clone(s.byItem) // never share the map with the receiver
 	if s.byItem == nil {
 		s.byItem = map[itemKey]SaveStatus{}
 	}
-	s.byItem[itemKey{kind, id}] = save
+	s.byItem[itemKey{it.kind, it.id}] = save
 	return s, save, nil
 }
 

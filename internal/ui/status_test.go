@@ -115,7 +115,10 @@ func TestStatusChangeWithoutPermissionDoesNothing(t *testing.T) {
 // the chain taiga → board → ui.
 func TestConflictUndoesChangeReloadsBoardAndTellsWhy(t *testing.T) {
 	h := onKanban(t, 100, 24)
-	h.taiga.FailNext("PatchUserStory", taiga.ErrConflict)
+	// A colleague changes #15 after the board loaded, which bumps its version.
+	changed := append([]domain.UserStory{}, webShopStories...)
+	changed[1].Title, changed[1].Version = "Product search with filters", 1
+	h.taiga.SetStories(webShop.ID, changed...)
 
 	h.key("shift+right")
 
@@ -124,6 +127,9 @@ func TestConflictUndoesChangeReloadsBoardAndTellsWhy(t *testing.T) {
 	}
 	if got := h.app.kanban.ActiveStatus().Name; got != "New" || selectedRef(h) != 15 {
 		t.Errorf("cursor on #%d in %q, want #15 back in New", selectedRef(h), got)
+	}
+	if line := lineWith(h, "#15"); !strings.Contains(line, "Product search with filters") {
+		t.Errorf("colleague's change not reloaded: %q", line)
 	}
 	want := "#15 was changed by someone else. Reloaded, please try again."
 	if !strings.Contains(h.plainView(), want) {
@@ -290,5 +296,33 @@ func TestKanbanFooterOffersStatusChangeOnlyWithUserStory(t *testing.T) {
 
 	if strings.Contains(h.plainView(), "⇧←/→ status") {
 		t.Errorf("view:\n%s", h.plainView())
+	}
+}
+
+func TestItemStaysLockedAcrossBoardSwitchUntilItsSaveIsAnswered(t *testing.T) {
+	h := onKanban(t, 100, 40)
+	save := h.sendOnly(keyMsg("shift+right")) // #15 Product search
+	h.key(":")
+	h.typeText("taskboard")
+	h.key("enter")
+	for range 7 {
+		h.key("j")
+	}
+	if got := selectedTaskboardRef(h); got != 15 {
+		t.Fatalf("selected #%d, want the User Story #15", got)
+	}
+
+	h.key("L")
+
+	if !strings.Contains(h.plainView(), "Still saving…") {
+		t.Errorf("view:\n%s", h.plainView())
+	}
+	h.runCmd(save)
+	h.key("L")
+	if n := h.taiga.Calls("PatchUserStory"); n != 2 {
+		t.Errorf("%d requests, want the second one after the answer", n)
+	}
+	if got := storedStory(t, h, 502); got.Status != 103 || got.Version != 2 {
+		t.Errorf("stored %+v", got)
 	}
 }

@@ -21,8 +21,14 @@ const (
 	maxProgressBar   = 10
 )
 
-// kanbanKeys is the footer of the Kanban Board.
-var kanbanKeys = []string{"⇧←/→ status", "←/→ tab", "↑/↓ move", "enter detail", "r refresh", ": menu", "? help"}
+// kanbanKeys returns the footer of the Kanban Board for the selected row.
+func kanbanKeys(k board.Kanban) []string {
+	var keys []string
+	if k.SelectedIndex() >= 0 {
+		keys = append(keys, "⇧←/→ status")
+	}
+	return append(keys, "←/→ tab", "↑/↓ move", "enter detail", "r refresh", ": menu", "? help")
+}
 
 // Placement of the detail view: right of the list from detailRightFrom
 // columns, otherwise below it, never over it.

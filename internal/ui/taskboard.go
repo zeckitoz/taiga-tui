@@ -30,8 +30,7 @@ func taskboardKeys(tb board.Taskboard) []string {
 		return []string{"r refresh", ": menu", "? help"}
 	}
 	var keys []string
-	// The group of Tasks without User Story has no Status.
-	if d, ok := tb.Detail(); ok && (d.Kind == board.RowTask || d.ID != 0) {
+	if tb.StatusSelected() {
 		keys = append(keys, "⇧←/→ status")
 	}
 	enter := "enter fold"

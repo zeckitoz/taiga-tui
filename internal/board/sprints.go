@@ -110,10 +110,7 @@ func (s Sprints) TaskboardLoaded(load LoadTaskboard, c domain.SprintContent) (Sp
 	if s.hasTaskboard && s.taskboard.Sprint().ID == load.Sprint.ID {
 		s.taskboard = s.taskboard.Reload(c)
 	} else {
-		tb := NewTaskboard(s.project, load.Sprint, c, s.me)
-		// Saves of the new Taskboard never match results of the old one.
-		tb.saves.generation = s.taskboard.saves.generation
-		s.taskboard, s.hasTaskboard = tb, true
+		s.taskboard, s.hasTaskboard = NewTaskboard(s.project, load.Sprint, c, s.me), true
 	}
 	return s, true
 }
