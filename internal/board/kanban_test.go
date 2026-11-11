@@ -277,3 +277,58 @@ func TestLoadDetailNeverChangesTheReceiver(t *testing.T) {
 		t.Error("the first LoadDetail changed the receiver")
 	}
 }
+
+func TestUnloadedKanbanLoadsFirstAndThenRefreshes(t *testing.T) {
+	k := board.UnloadedKanban(project, me)
+	if k.Loaded() || len(k.Rows()) != 0 {
+		t.Fatalf("loaded %v, rows %v", k.Loaded(), k.Rows())
+	}
+
+	k, load := k.LoadUserStories()
+	if load.Refresh || load.ProjectID != project.ID {
+		t.Errorf("first load %+v", load)
+	}
+	k, ok := k.UserStoriesLoaded(load, stories)
+	if !ok || !k.Loaded() || len(k.Rows()) != 3 {
+		t.Fatalf("taken %v, loaded %v, rows %v", ok, k.Loaded(), k.Rows())
+	}
+
+	k = k.CursorDown()
+	k, refresh := k.LoadUserStories()
+	if !refresh.Refresh {
+		t.Error("second load is no refresh")
+	}
+	k, _ = k.UserStoriesLoaded(refresh, stories)
+	if k.SelectedIndex() != 1 {
+		t.Error("refresh lost the selection")
+	}
+}
+
+func TestKanbanDropsListResultsOfEarlierLoadsAndOtherProjects(t *testing.T) {
+	k := board.UnloadedKanban(project, me)
+	k, first := k.LoadUserStories()
+	k, second := k.LoadUserStories()
+
+	if _, ok := k.UserStoriesLoaded(first, stories); ok {
+		t.Error("took the result of an earlier load")
+	}
+	if k.UserStoriesCurrent(first) || !k.UserStoriesCurrent(second) {
+		t.Error("UserStoriesCurrent wrong")
+	}
+	other := second
+	other.ProjectID = 99
+	if _, ok := k.UserStoriesLoaded(other, stories); ok {
+		t.Error("took the result of another project")
+	}
+	if _, ok := (board.Kanban{}).UserStoriesLoaded(second, stories); ok {
+		t.Error("the zero Kanban took a result")
+	}
+}
+
+func TestLoadedKanbanFromNewKanbanRefreshes(t *testing.T) {
+	k := board.NewKanban(project, stories, me)
+
+	if _, load := k.LoadUserStories(); !k.Loaded() || !load.Refresh {
+		t.Errorf("loaded %v, refresh %v", k.Loaded(), load.Refresh)
+	}
+}

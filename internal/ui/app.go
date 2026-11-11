@@ -110,9 +110,9 @@ type (
 		err     error
 	}
 	kanbanLoadedMsg struct {
-		projectID int64
-		stories   []domain.UserStory
-		err       error
+		load    board.LoadKanban
+		stories []domain.UserStory
+		err     error
 	}
 	userStoryLoadedMsg struct {
 		load  board.LoadUserStory
@@ -169,10 +169,8 @@ type App struct {
 	// rather than it being opened at startup.
 	picked bool
 	// board is the board of project on screenBoard.
-	board  config.Board
-	kanban board.Kanban
-	// hasKanban is set once the Kanban Board of project is loaded.
-	hasKanban bool
+	board     config.Board
+	kanban    board.Kanban
 	kanbanTop int
 
 	// sprints holds the Sprints of project and the Taskboard shown.
@@ -474,8 +472,8 @@ func indexOfProject(ps []domain.ProjectSummary, id int64) int {
 func (a App) openProject(p domain.ProjectSummary, picked bool) (App, tea.Cmd) {
 	a.project = domain.Project{ProjectSummary: p}
 	a.picked = picked
-	a.hasKanban = false
-	a.sprints = board.Sprints{} // takes no results until the project loaded
+	// Neither board takes results until the project loaded.
+	a.kanban, a.sprints = board.Kanban{}, board.Sprints{}
 	return a.loadProject(p.Slug)
 }
 
@@ -489,6 +487,7 @@ func (a App) loadProject(slug string) (App, tea.Cmd) {
 
 func (a App) projectLoaded(p domain.Project) (App, tea.Cmd) {
 	a.project = p
+	a.kanban = board.UnloadedKanban(p, a.me.ID)
 	a.sprints = board.NewSprints(p, a.me.ID)
 	if a.state.DefaultProject != p.ID {
 		a.state.DefaultProject = p.ID
@@ -676,37 +675,36 @@ func (a App) refreshFailed(err error) App {
 }
 
 func (a App) loadKanban() (App, tea.Cmd) {
-	api, id := a.deps.Taiga, a.project.ID
-	load := func() tea.Msg {
-		stories, err := api.Kanban(context.Background(), id)
-		return kanbanLoadedMsg{projectID: id, stories: stories, err: err}
+	var load board.LoadKanban
+	a.kanban, load = a.kanban.LoadUserStories()
+	api := a.deps.Taiga
+	cmd := func() tea.Msg {
+		stories, err := api.Kanban(context.Background(), load.ProjectID)
+		return kanbanLoadedMsg{load: load, stories: stories, err: err}
 	}
-	if a.hasKanban {
-		// A refresh keeps the board visible.
-		return a, load
+	if load.Refresh {
+		a.screen = screenBoard
+		return a, cmd // the board stays visible
 	}
-	return a.startLoading("Loading "+a.project.Name+"…", load)
+	return a.startLoading("Loading "+a.project.Name+"…", cmd)
 }
 
 func (a App) kanbanLoaded(msg kanbanLoadedMsg) (tea.Model, tea.Cmd) {
-	if msg.projectID != a.project.ID {
-		return a, nil // a load of a project that is no longer open
+	if !a.kanban.UserStoriesCurrent(msg.load) {
+		return a, nil
 	}
 	if msg.err != nil {
-		if a.hasKanban && !errors.Is(msg.err, taiga.ErrSessionExpired) {
+		if msg.load.Refresh && !errors.Is(msg.err, taiga.ErrSessionExpired) {
 			return a.refreshFailed(msg.err), nil
 		}
 		return a.failed(msg.err, "Couldn't load Kanban Board", App.loadKanban)
 	}
 	a = a.withoutTransient()
 	a.spinner.stop()
-	if a.hasKanban {
-		a.kanban = a.kanban.Reload(msg.stories)
-	} else {
-		a.kanban = board.NewKanban(a.project, msg.stories, a.me.ID)
+	if !msg.load.Refresh {
 		a.kanbanTop = 0
-		a.hasKanban = true
 	}
+	a.kanban, _ = a.kanban.UserStoriesLoaded(msg.load, msg.stories)
 	a.screen = screenBoard
 	a.scrollBoard()
 	return a.loadDetail()
@@ -721,7 +719,7 @@ func (a App) loadDetail() (App, tea.Cmd) {
 	if a.board == config.BoardTaskboard {
 		return a.loadTaskDetail()
 	}
-	if !a.hasKanban {
+	if !a.kanban.Loaded() {
 		return a, nil
 	}
 	k, load, ok := a.kanban.LoadDetail()
@@ -796,7 +794,7 @@ func (a App) updateBoard(msg tea.Msg) (tea.Model, tea.Cmd) {
 	}
 	switch key.String() {
 	case "r":
-		if a.hasKanban {
+		if a.kanban.Loaded() {
 			return a.loadKanban()
 		}
 	case "left", "h":
