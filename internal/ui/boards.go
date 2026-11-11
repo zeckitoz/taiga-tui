@@ -26,6 +26,8 @@ type boardView struct {
 	path func(App) string
 	body func(App, int) string
 	keys func(App) []string
+	// help lists the keys of the board for the full help.
+	help []keyHelp
 }
 
 // boardOps returns what the App does on board b. It is the one place that
@@ -43,6 +45,7 @@ func boardOps(b config.Board) boardView {
 			path:       App.taskboardPath,
 			body:       App.taskboardBody,
 			keys:       App.taskboardFooter,
+			help:       taskboardHelp,
 		}
 	}
 	return boardView{
@@ -56,8 +59,12 @@ func boardOps(b config.Board) boardView {
 		path:       App.kanbanPath,
 		body:       App.kanbanBody,
 		keys:       App.kanbanFooter,
+		help:       kanbanHelp,
 	}
 }
+
+// allBoards are the boards in the order the palette offers them.
+var allBoards = []config.Board{config.BoardTaskboard, config.BoardKanban}
 
 // otherBoard returns the board that is not b.
 func otherBoard(b config.Board) config.Board {

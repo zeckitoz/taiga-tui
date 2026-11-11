@@ -95,14 +95,6 @@ func (p *picker) selectFirst() {
 	}
 }
 
-// selectItem selects the item with the given ID if it is visible and can
-// be chosen.
-func (p *picker) selectItem(id int64) {
-	if slices.ContainsFunc(p.visible(), func(it pickerItem) bool { return it.id == id && !it.disabled }) {
-		p.selected = id
-	}
-}
-
 // selectedIndex returns the visible items and the index of the selected
 // one among them, -1 if it is filtered out or there is none.
 func (p *picker) selectedIndex() ([]pickerItem, int) {

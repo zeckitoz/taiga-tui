@@ -307,8 +307,8 @@ func TestEmptySprintShowsHintAndSwitchesSprint(t *testing.T) {
 	h.golden("taskboard_no_user_stories")
 
 	h.key(":")
-	if h.app.screen != screenSprintPicker {
-		t.Errorf("':' opened screen %v", h.app.screen)
+	if !h.app.paletteOpen {
+		t.Errorf("':' did not open the palette:\n%s", h.plainView())
 	}
 }
 
@@ -327,14 +327,14 @@ func TestProjectWithoutSprintsShowsHint(t *testing.T) {
 	}
 }
 
-func TestColonWithoutSprintsOpensProjectPicker(t *testing.T) {
+func TestColonWithoutSprintsOpensPalette(t *testing.T) {
 	h := resumed(t, newFake(), aliceState(mobileApp.ID))
 	h.start()
 
 	h.key(":")
 
-	if h.app.screen != screenPicker {
-		t.Errorf("screen %v", h.app.screen)
+	if !h.app.paletteOpen || h.app.screen != screenBoard {
+		t.Errorf("palette %v, screen %v", h.app.paletteOpen, h.app.screen)
 	}
 }
 
@@ -419,34 +419,6 @@ func TestUnknownRememberedSprintIsDroppedSilently(t *testing.T) {
 	}
 }
 
-func TestColonOnTaskboardSwitchesToAnySprint(t *testing.T) {
-	h := onTaskboard(t, 100, 24)
-
-	h.key(":")
-	h.golden("sprint_picker_switch")
-	h.key("down")
-	h.key("down")
-	h.key("enter")
-
-	if shownTaskboard(h).Sprint().ID != sprint3.ID {
-		t.Errorf("Sprint %+v", shownTaskboard(h).Sprint())
-	}
-	if got := h.state.saved.Sprints[webShop.ID]; got != sprint3.ID {
-		t.Errorf("remembered %d", got)
-	}
-}
-
-func TestEscInSprintPickerReturnsToTaskboard(t *testing.T) {
-	h := onTaskboard(t, 100, 24)
-	h.key(":")
-
-	h.key("esc")
-
-	if h.quit || h.app.screen != screenBoard || shownTaskboard(h).Sprint().ID != sprint4.ID {
-		t.Errorf("quit %v, screen %v", h.quit, h.app.screen)
-	}
-}
-
 func TestEscInSprintPickerAtStartQuits(t *testing.T) {
 	api := newFake()
 	api.SetSprints(webShop.ID, sprint5, sprint3)
@@ -456,34 +428,6 @@ func TestEscInSprintPickerAtStartQuits(t *testing.T) {
 
 	if !h.quit {
 		t.Error("esc did not quit")
-	}
-}
-
-func TestBSwitchesBoardsAndRemembersLastBoard(t *testing.T) {
-	h := onKanban(t, 100, 24)
-
-	h.key("b")
-	if h.app.board != config.BoardTaskboard || h.state.saved.LastBoard != config.BoardTaskboard {
-		t.Fatalf("board %q, saved %q", h.app.board, h.state.saved.LastBoard)
-	}
-	if !strings.Contains(h.plainView(), "Web Shop › Taskboard › Sprint 4") {
-		t.Errorf("view:\n%s", h.plainView())
-	}
-
-	h.key("b")
-	if h.app.board != config.BoardKanban || h.state.saved.LastBoard != config.BoardKanban {
-		t.Errorf("board %q, saved %q", h.app.board, h.state.saved.LastBoard)
-	}
-}
-
-func TestBDoesNothingWhenOtherBoardIsDisabled(t *testing.T) {
-	h := resumed(t, newFake(), aliceState(mobileApp.ID))
-	h.start()
-
-	h.key("b")
-
-	if h.app.board != config.BoardTaskboard {
-		t.Errorf("board %q", h.app.board)
 	}
 }
 
@@ -558,34 +502,12 @@ func onSprintPickerWith(t *testing.T, api *taigafake.Fake) *harness {
 	return h
 }
 
-func TestSprintSwitcherStartsOnSprintShown(t *testing.T) {
-	h := onTaskboard(t, 100, 24)
-
-	h.key(":")
-
-	if id, _ := h.app.sprintPicker.chosen(); id != sprint4.ID {
-		t.Errorf("selected Sprint %d", id)
-	}
-}
-
 func TestNarrowHeaderLeavesOutDateRangeAndKeepsName(t *testing.T) {
 	h := onTaskboard(t, 60, 15)
 
 	header := strings.Split(h.plainView(), "\n")[0]
 	if want := " Web Shop › Taskboard › Sprint 4  current"; !strings.HasPrefix(header, want) || !strings.HasSuffix(header, "Alice Example ") {
 		t.Errorf("header %q", header)
-	}
-}
-
-func TestNoSprintsFooterOffersKanbanWhenEnabled(t *testing.T) {
-	api := newFake()
-	api.SetSprints(webShop.ID)
-
-	h := onTaskboardWith(t, api, 100, 24)
-
-	lines := strings.Split(h.plainView(), "\n")
-	if foot := lines[len(lines)-1]; !strings.Contains(foot, "b kanban") {
-		t.Errorf("footer %q", foot)
 	}
 }
 

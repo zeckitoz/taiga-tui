@@ -24,24 +24,19 @@ const (
 // noUserStory names the group of Tasks without User Story.
 const noUserStory = "Tasks without user story"
 
-// taskboardKeys returns the footer of the Taskboard for the selected row,
-// offering the Kanban Board if the project has it.
-func taskboardKeys(tb board.Taskboard, kanban bool) []string {
-	keys := []string{"↑/↓ move", "←/→ fold", "enter fold", ": sprint", "r refresh"}
+// taskboardKeys returns the footer of the Taskboard for the selected row.
+func taskboardKeys(tb board.Taskboard) []string {
+	keys := []string{"↑/↓ move", "←/→ fold", "enter fold", "r refresh", ": menu", "? help"}
 	switch {
 	case tb.Empty():
-		keys = []string{": switch sprint", "r refresh"}
+		keys = []string{"r refresh", ": menu", "? help"}
 	case tb.TaskSelected():
 		keys[2] = "enter detail"
 	}
-	if kanban {
-		keys = append(keys, "b kanban")
-	}
-	return append(keys, "q quit")
+	return keys
 }
 
-// noSprintsKeys is the footer and hint of a project without Sprints. The
-// project picker stands in for the menu until the command palette exists.
+// noSprintsKeys is the hint of a project without Sprints.
 const noSprintsKeys = ": menu · r refresh"
 
 // sprintPath is the header part naming the Sprint, with its date range if
@@ -89,20 +84,34 @@ func sprintPhase(s domain.Sprint, today domain.Date) string {
 // sprintItems lists the Sprints for the Sprint picker with their date
 // ranges and phases in aligned columns.
 func sprintItems(sprints []domain.Sprint, today domain.Date) []pickerItem {
-	nameW, rangeW := 0, 0
+	nameW := 0
 	for _, s := range sprints {
 		nameW = max(nameW, ansi.StringWidth(plainText(s.Name)))
+	}
+	notes := sprintNotes(sprints, today)
+	items := make([]pickerItem, len(sprints))
+	for i, s := range sprints {
+		items[i] = pickerItem{id: s.ID, name: fit(plainText(s.Name), nameW), note: notes[i]}
+	}
+	return items
+}
+
+// sprintNotes returns the date range and phase of each Sprint, with the
+// phases aligned in a column.
+func sprintNotes(sprints []domain.Sprint, today domain.Date) []string {
+	rangeW := 0
+	for _, s := range sprints {
 		rangeW = max(rangeW, len(dateRange(s)))
 	}
-	items := make([]pickerItem, len(sprints))
+	notes := make([]string, len(sprints))
 	for i, s := range sprints {
 		note := fit(dateRange(s), rangeW)
 		if phase := sprintPhase(s, today); phase != "" {
 			note += "  " + phase
 		}
-		items[i] = pickerItem{id: s.ID, name: fit(plainText(s.Name), nameW), note: strings.TrimRight(note, " ")}
+		notes[i] = strings.TrimRight(note, " ")
 	}
-	return items
+	return notes
 }
 
 // taskboardLines returns the line of each row in the rendered list and the
