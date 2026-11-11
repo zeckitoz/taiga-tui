@@ -1,2 +1,2 @@
 # Golden files and fixtures must stay byte-identical on every platform.
-testdata/** -text
+**/testdata/** -text
