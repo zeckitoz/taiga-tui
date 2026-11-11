@@ -1,24 +1,889 @@
 {
-  "id": 7,
-  "name": "Web Shop",
-  "slug": "alice-web-shop",
+  "anon_permissions": [],
+  "archived_code": null,
+  "blocked_code": null,
+  "created_date": "2026-11-11T15:58:13.639Z",
+  "creation_template": 1,
+  "default_epic_status": 2450,
+  "default_issue_status": 3410,
+  "default_issue_type": 1460,
+  "default_points": 5840,
+  "default_priority": 1464,
+  "default_severity": 2433,
+  "default_swimlane": null,
+  "default_task_status": 2449,
+  "default_us_status": 2949,
+  "description": "redacted",
+  "epic_custom_attributes": null,
+  "epic_statuses": [
+    {
+      "color": "#70728F",
+      "id": 2450,
+      "is_closed": false,
+      "name": "New",
+      "order": 1,
+      "project_id": 496,
+      "slug": "new"
+    },
+    {
+      "color": "#E44057",
+      "id": 2451,
+      "is_closed": false,
+      "name": "Ready",
+      "order": 2,
+      "project_id": 496,
+      "slug": "ready"
+    },
+    {
+      "color": "#E47C40",
+      "id": 2452,
+      "is_closed": false,
+      "name": "In progress",
+      "order": 3,
+      "project_id": 496,
+      "slug": "in-progress"
+    },
+    {
+      "color": "#E4CE40",
+      "id": 2453,
+      "is_closed": false,
+      "name": "Ready for test",
+      "order": 4,
+      "project_id": 496,
+      "slug": "ready-for-test"
+    },
+    {
+      "color": "#A8E440",
+      "id": 2454,
+      "is_closed": true,
+      "name": "Done",
+      "order": 5,
+      "project_id": 496,
+      "slug": "done"
+    }
+  ],
+  "epics_csv_uuid": null,
+  "i_am_admin": true,
+  "i_am_member": true,
+  "i_am_owner": true,
+  "id": 496,
   "is_backlog_activated": true,
+  "is_contact_activated": true,
+  "is_epics_activated": false,
+  "is_fan": false,
+  "is_featured": false,
+  "is_issues_activated": true,
   "is_kanban_activated": true,
-  "my_permissions": ["view_us", "modify_us", "view_tasks", "modify_task"],
-  "us_statuses": [
-    {"id": 101, "name": "New", "slug": "new", "order": 1, "is_closed": false, "is_archived": false, "color": "#70728F", "wip_limit": null, "project_id": 7},
-    {"id": 102, "name": "In progress", "slug": "in-progress", "order": 2, "is_closed": false, "is_archived": false, "color": "#E47C40", "wip_limit": 3, "project_id": 7},
-    {"id": 103, "name": "Done", "slug": "done", "order": 3, "is_closed": true, "is_archived": false, "color": "#A8E440", "wip_limit": null, "project_id": 7},
-    {"id": 104, "name": "Archived", "slug": "archived", "order": 4, "is_closed": true, "is_archived": true, "color": "#5C3566", "wip_limit": null, "project_id": 7}
+  "is_looking_for_people": false,
+  "is_out_of_owner_limits": false,
+  "is_private": true,
+  "is_private_extra_info": {
+    "can_be_updated": true,
+    "reason": null
+  },
+  "is_watcher": true,
+  "is_wiki_activated": true,
+  "issue_custom_attributes": null,
+  "issue_duedates": [
+    {
+      "by_default": true,
+      "color": "#9dce0a",
+      "days_to_due": null,
+      "id": 1459,
+      "name": "Default",
+      "order": 1,
+      "project_id": 496
+    },
+    {
+      "by_default": false,
+      "color": "#ff9900",
+      "days_to_due": 14,
+      "id": 1460,
+      "name": "Due soon",
+      "order": 2,
+      "project_id": 496
+    },
+    {
+      "by_default": false,
+      "color": "#E44057",
+      "days_to_due": 0,
+      "id": 1461,
+      "name": "Past due",
+      "order": 3,
+      "project_id": 496
+    }
+  ],
+  "issue_statuses": [
+    {
+      "color": "#70728F",
+      "id": 3410,
+      "is_closed": false,
+      "name": "New",
+      "order": 1,
+      "project_id": 496,
+      "slug": "new"
+    },
+    {
+      "color": "#40A8E4",
+      "id": 3411,
+      "is_closed": false,
+      "name": "In progress",
+      "order": 2,
+      "project_id": 496,
+      "slug": "in-progress"
+    },
+    {
+      "color": "#E4CE40",
+      "id": 3412,
+      "is_closed": false,
+      "name": "Ready for test",
+      "order": 3,
+      "project_id": 496,
+      "slug": "ready-for-test"
+    },
+    {
+      "color": "#A8E440",
+      "id": 3413,
+      "is_closed": true,
+      "name": "Closed",
+      "order": 4,
+      "project_id": 496,
+      "slug": "closed"
+    },
+    {
+      "color": "#E44057",
+      "id": 3414,
+      "is_closed": false,
+      "name": "Needs Info",
+      "order": 5,
+      "project_id": 496,
+      "slug": "needs-info"
+    },
+    {
+      "color": "#A9AABC",
+      "id": 3415,
+      "is_closed": true,
+      "name": "Rejected",
+      "order": 6,
+      "project_id": 496,
+      "slug": "rejected"
+    },
+    {
+      "color": "#5178D3",
+      "id": 3416,
+      "is_closed": false,
+      "name": "Postponed",
+      "order": 7,
+      "project_id": 496,
+      "slug": "postponed"
+    }
+  ],
+  "issue_types": [
+    {
+      "color": "#E44057",
+      "id": 1460,
+      "name": "Bug",
+      "order": 1,
+      "project_id": 496
+    },
+    {
+      "color": "#5178D3",
+      "id": 1461,
+      "name": "Question",
+      "order": 2,
+      "project_id": 496
+    },
+    {
+      "color": "#40E4CE",
+      "id": 1462,
+      "name": "Enhancement",
+      "order": 3,
+      "project_id": 496
+    }
+  ],
+  "issues_csv_uuid": null,
+  "logo_big_url": null,
+  "logo_small_url": null,
+  "looking_for_people_note": "",
+  "max_memberships": null,
+  "members": [
+    {
+      "color": "#086d58",
+      "full_name": "Member 3",
+      "full_name_display": "Member 3",
+      "gravatar_id": "redacted",
+      "id": 368,
+      "is_active": true,
+      "photo": "https://media.example.invalid/redacted.png",
+      "role": 2824,
+      "role_name": "Product Owner",
+      "username": "member-3"
+    },
+    {
+      "color": "#bd083d",
+      "full_name": "Member 4",
+      "full_name_display": "Member 4",
+      "gravatar_id": "redacted",
+      "id": 386,
+      "is_active": true,
+      "photo": "https://media.example.invalid/redacted.png",
+      "role": 2825,
+      "role_name": "Stakeholder",
+      "username": "member-4"
+    }
+  ],
+  "milestones": [
+    {
+      "closed": false,
+      "id": 1947,
+      "name": "Sprint 1",
+      "slug": "sprint-1-109"
+    }
+  ],
+  "modified_date": "2026-11-11T15:58:34.500Z",
+  "my_homepage": false,
+  "my_permissions": [
+    "add_member",
+    "modify_project",
+    "view_wiki_links",
+    "delete_wiki_link",
+    "add_milestone",
+    "comment_wiki_page",
+    "admin_project_values",
+    "delete_epic",
+    "add_us",
+    "modify_wiki_link",
+    "modify_us",
+    "delete_us",
+    "delete_milestone",
+    "add_wiki_link",
+    "delete_project",
+    "add_wiki_page",
+    "modify_task",
+    "admin_roles",
+    "add_task",
+    "delete_task",
+    "view_issues",
+    "add_epic",
+    "remove_member",
+    "comment_us",
+    "modify_issue",
+    "view_wiki_pages",
+    "view_us",
+    "view_project",
+    "comment_epic",
+    "modify_wiki_page",
+    "comment_issue",
+    "add_issue",
+    "view_milestones",
+    "view_tasks",
+    "view_epics",
+    "comment_task",
+    "modify_epic",
+    "delete_issue",
+    "delete_wiki_page",
+    "modify_milestone"
+  ],
+  "name": "Test Project",
+  "notify_level": 1,
+  "owner": {
+    "big_photo": "https://media.example.invalid/redacted.png",
+    "full_name_display": "Member 3",
+    "gravatar_id": "redacted",
+    "id": 368,
+    "is_active": true,
+    "photo": "https://media.example.invalid/redacted.png",
+    "username": "member-3"
+  },
+  "points": [
+    {
+      "id": 5840,
+      "name": "?",
+      "order": 1,
+      "project_id": 496,
+      "value": null
+    },
+    {
+      "id": 5841,
+      "name": "0",
+      "order": 2,
+      "project_id": 496,
+      "value": 0
+    },
+    {
+      "id": 5842,
+      "name": "1/2",
+      "order": 3,
+      "project_id": 496,
+      "value": 0.5
+    },
+    {
+      "id": 5843,
+      "name": "1",
+      "order": 4,
+      "project_id": 496,
+      "value": 1
+    },
+    {
+      "id": 5844,
+      "name": "2",
+      "order": 5,
+      "project_id": 496,
+      "value": 2
+    },
+    {
+      "id": 5845,
+      "name": "3",
+      "order": 6,
+      "project_id": 496,
+      "value": 3
+    },
+    {
+      "id": 5846,
+      "name": "5",
+      "order": 7,
+      "project_id": 496,
+      "value": 5
+    },
+    {
+      "id": 5847,
+      "name": "8",
+      "order": 8,
+      "project_id": 496,
+      "value": 8
+    },
+    {
+      "id": 5848,
+      "name": "10",
+      "order": 9,
+      "project_id": 496,
+      "value": 10
+    },
+    {
+      "id": 5849,
+      "name": "13",
+      "order": 10,
+      "project_id": 496,
+      "value": 13
+    },
+    {
+      "id": 5850,
+      "name": "20",
+      "order": 11,
+      "project_id": 496,
+      "value": 20
+    },
+    {
+      "id": 5851,
+      "name": "40",
+      "order": 12,
+      "project_id": 496,
+      "value": 40
+    }
+  ],
+  "priorities": [
+    {
+      "color": "#A8E440",
+      "id": 1463,
+      "name": "Low",
+      "order": 1,
+      "project_id": 496
+    },
+    {
+      "color": "#E4CE40",
+      "id": 1464,
+      "name": "Normal",
+      "order": 3,
+      "project_id": 496
+    },
+    {
+      "color": "#E47C40",
+      "id": 1465,
+      "name": "High",
+      "order": 5,
+      "project_id": 496
+    }
+  ],
+  "public_permissions": [],
+  "roles": [
+    {
+      "computable": true,
+      "id": 2820,
+      "name": "UX",
+      "order": 10,
+      "permissions": [
+        "add_issue",
+        "modify_issue",
+        "delete_issue",
+        "view_issues",
+        "add_milestone",
+        "modify_milestone",
+        "delete_milestone",
+        "view_milestones",
+        "view_project",
+        "add_task",
+        "modify_task",
+        "delete_task",
+        "view_tasks",
+        "add_us",
+        "modify_us",
+        "delete_us",
+        "view_us",
+        "add_wiki_page",
+        "modify_wiki_page",
+        "delete_wiki_page",
+        "view_wiki_pages",
+        "add_wiki_link",
+        "delete_wiki_link",
+        "view_wiki_links",
+        "view_epics",
+        "add_epic",
+        "modify_epic",
+        "delete_epic",
+        "comment_epic",
+        "comment_us",
+        "comment_task",
+        "comment_issue",
+        "comment_wiki_page"
+      ],
+      "project_id": 496,
+      "slug": "ux"
+    },
+    {
+      "computable": true,
+      "id": 2821,
+      "name": "Design",
+      "order": 20,
+      "permissions": [
+        "add_issue",
+        "modify_issue",
+        "delete_issue",
+        "view_issues",
+        "add_milestone",
+        "modify_milestone",
+        "delete_milestone",
+        "view_milestones",
+        "view_project",
+        "add_task",
+        "modify_task",
+        "delete_task",
+        "view_tasks",
+        "add_us",
+        "modify_us",
+        "delete_us",
+        "view_us",
+        "add_wiki_page",
+        "modify_wiki_page",
+        "delete_wiki_page",
+        "view_wiki_pages",
+        "add_wiki_link",
+        "delete_wiki_link",
+        "view_wiki_links",
+        "view_epics",
+        "add_epic",
+        "modify_epic",
+        "delete_epic",
+        "comment_epic",
+        "comment_us",
+        "comment_task",
+        "comment_issue",
+        "comment_wiki_page"
+      ],
+      "project_id": 496,
+      "slug": "design"
+    },
+    {
+      "computable": true,
+      "id": 2822,
+      "name": "Front",
+      "order": 30,
+      "permissions": [
+        "add_issue",
+        "modify_issue",
+        "delete_issue",
+        "view_issues",
+        "add_milestone",
+        "modify_milestone",
+        "delete_milestone",
+        "view_milestones",
+        "view_project",
+        "add_task",
+        "modify_task",
+        "delete_task",
+        "view_tasks",
+        "add_us",
+        "modify_us",
+        "delete_us",
+        "view_us",
+        "add_wiki_page",
+        "modify_wiki_page",
+        "delete_wiki_page",
+        "view_wiki_pages",
+        "add_wiki_link",
+        "delete_wiki_link",
+        "view_wiki_links",
+        "view_epics",
+        "add_epic",
+        "modify_epic",
+        "delete_epic",
+        "comment_epic",
+        "comment_us",
+        "comment_task",
+        "comment_issue",
+        "comment_wiki_page"
+      ],
+      "project_id": 496,
+      "slug": "front"
+    },
+    {
+      "computable": true,
+      "id": 2823,
+      "name": "Back",
+      "order": 40,
+      "permissions": [
+        "add_issue",
+        "modify_issue",
+        "delete_issue",
+        "view_issues",
+        "add_milestone",
+        "modify_milestone",
+        "delete_milestone",
+        "view_milestones",
+        "view_project",
+        "add_task",
+        "modify_task",
+        "delete_task",
+        "view_tasks",
+        "add_us",
+        "modify_us",
+        "delete_us",
+        "view_us",
+        "add_wiki_page",
+        "modify_wiki_page",
+        "delete_wiki_page",
+        "view_wiki_pages",
+        "add_wiki_link",
+        "delete_wiki_link",
+        "view_wiki_links",
+        "view_epics",
+        "add_epic",
+        "modify_epic",
+        "delete_epic",
+        "comment_epic",
+        "comment_us",
+        "comment_task",
+        "comment_issue",
+        "comment_wiki_page"
+      ],
+      "project_id": 496,
+      "slug": "back"
+    },
+    {
+      "computable": false,
+      "id": 2824,
+      "name": "Product Owner",
+      "order": 50,
+      "permissions": [
+        "add_issue",
+        "modify_issue",
+        "delete_issue",
+        "view_issues",
+        "add_milestone",
+        "modify_milestone",
+        "delete_milestone",
+        "view_milestones",
+        "view_project",
+        "add_task",
+        "modify_task",
+        "delete_task",
+        "view_tasks",
+        "add_us",
+        "modify_us",
+        "delete_us",
+        "view_us",
+        "add_wiki_page",
+        "modify_wiki_page",
+        "delete_wiki_page",
+        "view_wiki_pages",
+        "add_wiki_link",
+        "delete_wiki_link",
+        "view_wiki_links",
+        "view_epics",
+        "add_epic",
+        "modify_epic",
+        "delete_epic",
+        "comment_epic",
+        "comment_us",
+        "comment_task",
+        "comment_issue",
+        "comment_wiki_page"
+      ],
+      "project_id": 496,
+      "slug": "product-owner"
+    },
+    {
+      "computable": false,
+      "id": 2825,
+      "name": "Stakeholder",
+      "order": 60,
+      "permissions": [
+        "add_issue",
+        "modify_issue",
+        "delete_issue",
+        "view_issues",
+        "view_milestones",
+        "view_project",
+        "view_tasks",
+        "view_us",
+        "modify_wiki_page",
+        "view_wiki_pages",
+        "add_wiki_link",
+        "delete_wiki_link",
+        "view_wiki_links",
+        "view_epics",
+        "comment_epic",
+        "comment_us",
+        "comment_task",
+        "comment_issue",
+        "comment_wiki_page"
+      ],
+      "project_id": 496,
+      "slug": "stakeholder"
+    }
+  ],
+  "severities": [
+    {
+      "color": "#70728F",
+      "id": 2431,
+      "name": "Wishlist",
+      "order": 1,
+      "project_id": 496
+    },
+    {
+      "color": "#40A8E4",
+      "id": 2432,
+      "name": "Minor",
+      "order": 2,
+      "project_id": 496
+    },
+    {
+      "color": "#40E47C",
+      "id": 2433,
+      "name": "Normal",
+      "order": 3,
+      "project_id": 496
+    },
+    {
+      "color": "#E4A240",
+      "id": 2434,
+      "name": "Important",
+      "order": 4,
+      "project_id": 496
+    },
+    {
+      "color": "#D35450",
+      "id": 2435,
+      "name": "Critical",
+      "order": 5,
+      "project_id": 496
+    }
+  ],
+  "slug": "test-project",
+  "swimlanes": null,
+  "tags": [],
+  "tags_colors": {},
+  "task_custom_attributes": null,
+  "task_duedates": [
+    {
+      "by_default": true,
+      "color": "#9dce0a",
+      "days_to_due": null,
+      "id": 1459,
+      "name": "Default",
+      "order": 1,
+      "project_id": 496
+    },
+    {
+      "by_default": false,
+      "color": "#ff9900",
+      "days_to_due": 14,
+      "id": 1460,
+      "name": "Due soon",
+      "order": 2,
+      "project_id": 496
+    },
+    {
+      "by_default": false,
+      "color": "#E44057",
+      "days_to_due": 0,
+      "id": 1461,
+      "name": "Past due",
+      "order": 3,
+      "project_id": 496
+    }
   ],
   "task_statuses": [
-    {"id": 201, "name": "New", "slug": "new", "order": 1, "is_closed": false, "color": "#70728F", "project_id": 7}
+    {
+      "color": "#70728F",
+      "id": 2449,
+      "is_closed": false,
+      "name": "New",
+      "order": 1,
+      "project_id": 496,
+      "slug": "new"
+    },
+    {
+      "color": "#E47C40",
+      "id": 2450,
+      "is_closed": false,
+      "name": "In progress",
+      "order": 2,
+      "project_id": 496,
+      "slug": "in-progress"
+    },
+    {
+      "color": "#E4CE40",
+      "id": 2451,
+      "is_closed": false,
+      "name": "Ready for test",
+      "order": 3,
+      "project_id": 496,
+      "slug": "ready-for-test"
+    },
+    {
+      "color": "#A8E440",
+      "id": 2452,
+      "is_closed": true,
+      "name": "Closed",
+      "order": 4,
+      "project_id": 496,
+      "slug": "closed"
+    },
+    {
+      "color": "#5178D3",
+      "id": 2453,
+      "is_closed": false,
+      "name": "Needs Info",
+      "order": 5,
+      "project_id": 496,
+      "slug": "needs-info"
+    }
   ],
-  "swimlanes": null,
-  "default_swimlane": null,
-  "members": [
-    {"id": 42, "username": "alice", "full_name": "Alice Example", "full_name_display": "Alice Example", "photo": null, "color": "#FC8EAC", "is_active": true, "role": 1, "role_name": "Product Owner", "gravatar_id": "x"},
-    {"id": 43, "username": "bkoch", "full_name": "", "full_name_display": "bkoch", "photo": null, "color": "#8EFCAC", "is_active": true, "role": 2, "role_name": "Developer", "gravatar_id": "y"}
+  "tasks_csv_uuid": null,
+  "total_activity": 29,
+  "total_activity_last_month": 29,
+  "total_activity_last_week": 29,
+  "total_activity_last_year": 29,
+  "total_closed_milestones": 0,
+  "total_fans": 0,
+  "total_fans_last_month": 0,
+  "total_fans_last_week": 0,
+  "total_fans_last_year": 0,
+  "total_memberships": 2,
+  "total_milestones": null,
+  "total_story_points": null,
+  "total_watchers": 1,
+  "totals_updated_datetime": "2026-11-11T16:31:22.517Z",
+  "transfer_token": null,
+  "us_duedates": [
+    {
+      "by_default": true,
+      "color": "#9dce0a",
+      "days_to_due": null,
+      "id": 1459,
+      "name": "Default",
+      "order": 1,
+      "project_id": 496
+    },
+    {
+      "by_default": false,
+      "color": "#ff9900",
+      "days_to_due": 14,
+      "id": 1460,
+      "name": "Due soon",
+      "order": 2,
+      "project_id": 496
+    },
+    {
+      "by_default": false,
+      "color": "#E44057",
+      "days_to_due": 0,
+      "id": 1461,
+      "name": "Past due",
+      "order": 3,
+      "project_id": 496
+    }
   ],
-  "milestones": null
+  "us_statuses": [
+    {
+      "color": "#70728F",
+      "id": 2949,
+      "is_archived": false,
+      "is_closed": false,
+      "name": "New",
+      "order": 1,
+      "project_id": 496,
+      "slug": "new",
+      "wip_limit": null
+    },
+    {
+      "color": "#E44057",
+      "id": 2950,
+      "is_archived": false,
+      "is_closed": false,
+      "name": "Ready",
+      "order": 2,
+      "project_id": 496,
+      "slug": "ready",
+      "wip_limit": null
+    },
+    {
+      "color": "#E47C40",
+      "id": 2951,
+      "is_archived": false,
+      "is_closed": false,
+      "name": "In progress",
+      "order": 3,
+      "project_id": 496,
+      "slug": "in-progress",
+      "wip_limit": 3
+    },
+    {
+      "color": "#E4CE40",
+      "id": 2952,
+      "is_archived": false,
+      "is_closed": false,
+      "name": "Ready for test",
+      "order": 4,
+      "project_id": 496,
+      "slug": "ready-for-test",
+      "wip_limit": null
+    },
+    {
+      "color": "#A8E440",
+      "id": 2953,
+      "is_archived": false,
+      "is_closed": true,
+      "name": "Done",
+      "order": 5,
+      "project_id": 496,
+      "slug": "done",
+      "wip_limit": null
+    },
+    {
+      "color": "#A9AABC",
+      "id": 2954,
+      "is_archived": true,
+      "is_closed": true,
+      "name": "Archived",
+      "order": 6,
+      "project_id": 496,
+      "slug": "archived",
+      "wip_limit": null
+    }
+  ],
+  "userstories_csv_uuid": null,
+  "userstory_custom_attributes": null,
+  "videoconferences": null,
+  "videoconferences_extra_data": null
 }

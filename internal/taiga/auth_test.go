@@ -40,7 +40,7 @@ func TestLoginSendsNormalLoginAndReturnsMemberAndTokens(t *testing.T) {
 		t.Errorf("request body %v, want %v", got, want)
 	}
 	wantRes := taiga.LoginResult{
-		Member: domain.TeamMember{ID: 42, Username: "alice", FullName: "Alice Example"},
+		Member: domain.TeamMember{ID: 368, Username: "member-3", FullName: "Member 3"},
 		Tokens: taiga.Tokens{Access: "redacted-access-token-1", Refresh: "redacted-refresh-token-1"},
 	}
 	if res != wantRes {

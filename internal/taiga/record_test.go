@@ -24,7 +24,9 @@ var record = flag.Bool("record", false, "record the fixtures in testdata from th
 //	  go test ./internal/taiga -run TestRecordFixtures -record
 //
 // TAIGA_TUI_LIVE_URL overrides the instance, which defaults to Ostfalia's.
-// Without -record all tests use the checked-in fixtures.
+// Without -record all tests use the checked-in fixtures. See
+// docs/test-project.md for access to the test project and how to review a
+// recording.
 func TestRecordFixtures(t *testing.T) {
 	if !*record {
 		t.Skip("records from the live instance only with -record")
