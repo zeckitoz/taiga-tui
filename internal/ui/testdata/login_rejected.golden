@@ -1,0 +1,24 @@
+                                                                                |
+                                                                                |
+                                                                                |
+                                                                                |
+              ╭──────────────────────────────────────────────────╮              |
+              │                                                  │              |
+              │   Log in to taiga.example.org                    │              |
+              │                                                  │              |
+              │   Username or email                              │              |
+              │     alice                                        │              |
+              │                                                  │              |
+              │   Password                                       │              |
+              │   ❯                                              │              |
+              │                                                  │              |
+              │   Login rejected: username: This field may not   │              |
+              │   be blank.                                      │              |
+              │                                                  │              |
+              │   enter log in · tab switch field · esc quit     │              |
+              │                                                  │              |
+              ╰──────────────────────────────────────────────────╯              |
+                                                                                |
+                                                                                |
+                                                                                |
+                                                                                |

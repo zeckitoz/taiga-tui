@@ -637,8 +637,12 @@ func (a App) statusLines(indent int) []string {
 	return lines
 }
 
-// loginErrorText is the text the login dialog shows for err.
+// loginErrorText is the text the login dialog shows for err. For malformed
+// input Taiga's reason tells the Team Member what to fix.
 func loginErrorText(host string, err error) string {
+	if rerr, ok := errors.AsType[*taiga.RejectedError](err); ok && rerr.InvalidInput() && rerr.Reason != "" {
+		return "Login rejected: " + rerr.Reason
+	}
 	if errors.Is(err, taiga.ErrInvalidCredentials) {
 		return "Invalid username or password"
 	}

@@ -7,8 +7,10 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
+	"unicode/utf8"
 
 	"github.com/zeckitoz/taiga-tui/internal/domain"
 	"github.com/zeckitoz/taiga-tui/internal/taiga"
@@ -83,6 +85,68 @@ func TestLoginMapsFailuresToTypedErrors(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestLoginRejectionCarriesTaigasReason(t *testing.T) {
+	tests := []struct {
+		name    string
+		status  int
+		body    string
+		wantMsg string
+	}{
+		{name: "error message", status: 401, body: `{"_error_message": "No active account found with the given credentials", "_error_type": "taiga.base.exceptions.WrongArguments"}`,
+			wantMsg: "invalid username or password: No active account found with the given credentials"},
+		{name: "detail", status: 400, body: `{"detail": "JSON parse error"}`,
+			wantMsg: "invalid username or password: JSON parse error"},
+		{name: "error message before detail", status: 400, body: `{"detail": "second", "_error_message": "first"}`,
+			wantMsg: "invalid username or password: first"},
+		{name: "first field error", status: 400, body: `{"username": ["This field may not be blank."], "password": ["This field may not be blank."]}`,
+			wantMsg: "invalid username or password: username: This field may not be blank."},
+		{name: "field error as string", status: 400, body: `{"type": "Invalid login type"}`,
+			wantMsg: "invalid username or password: type: Invalid login type"},
+		{name: "none", status: 400, body: `{"_error_type": "x", "count": 3}`, wantMsg: "invalid username or password"},
+		{name: "empty object", status: 401, body: `{}`, wantMsg: "invalid username or password"},
+		{name: "not JSON", status: 401, body: `<html>Unauthorized</html>`, wantMsg: "invalid username or password"},
+		{name: "empty body", status: 401, body: ``, wantMsg: "invalid username or password"},
+		{name: "multi-line reason", status: 400, body: `{"_error_message": "  first line\n\tsecond   line  "}`,
+			wantMsg: "invalid username or password: first line second line"},
+		{name: "password echoed", status: 400, body: `{"_error_message": "wrong password p4ss-w0rd!"}`,
+			wantMsg: "invalid username or password: wrong password [redacted]"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			srv := rejectingServer(t, tt.status, tt.body)
+
+			_, err := taiga.NewAuthAPI(srv.URL).Login(t.Context(), "alice", "p4ss-w0rd!")
+
+			if !errors.Is(err, taiga.ErrInvalidCredentials) {
+				t.Errorf("got %v, want ErrInvalidCredentials", err)
+			}
+			if err == nil || err.Error() != tt.wantMsg {
+				t.Errorf("got %q, want %q", err, tt.wantMsg)
+			}
+			rerr, ok := errors.AsType[*taiga.RejectedError](err)
+			if !ok || rerr.Code != tt.status {
+				t.Errorf("got %v, want RejectedError with code %d", err, tt.status)
+			}
+		})
+	}
+}
+
+func TestRejectionReasonIsOneLineOfAtMost200Characters(t *testing.T) {
+	long := strings.Repeat("ä", 150) + "\n" + strings.Repeat("b", 150)
+	srv := rejectingServer(t, 400, `{"_error_message": "`+strings.ReplaceAll(long, "\n", `\n`)+`"}`)
+
+	_, err := taiga.NewAuthAPI(srv.URL).Login(t.Context(), "alice", "pw")
+
+	rerr, ok := errors.AsType[*taiga.RejectedError](err)
+	if !ok {
+		t.Fatalf("got %v, want RejectedError", err)
+	}
+	want := strings.Repeat("ä", 150) + " " + strings.Repeat("b", 48) + "…"
+	if rerr.Reason != want {
+		t.Errorf("got reason %q (%d characters), want %q", rerr.Reason, utf8.RuneCountInString(rerr.Reason), want)
 	}
 }
 
@@ -184,6 +248,41 @@ func TestRefreshMapsFailuresToTypedErrors(t *testing.T) {
 	}
 }
 
+func TestRefreshRejectionCarriesTaigasReason(t *testing.T) {
+	tests := []struct {
+		name    string
+		status  int
+		body    string
+		wantMsg string
+	}{
+		{name: "detail", status: 401, body: `{"detail": "Token is invalid or expired", "code": "token_not_valid"}`,
+			wantMsg: "session expired: Token is invalid or expired"},
+		{name: "field error", status: 400, body: `{"refresh": ["This field may not be blank."]}`,
+			wantMsg: "session expired: refresh: This field may not be blank."},
+		{name: "not JSON", status: 401, body: `nope`, wantMsg: "session expired"},
+		{name: "token echoed", status: 401, body: `{"detail": "Token old.refresh.jwt is blacklisted"}`,
+			wantMsg: "session expired: Token [redacted] is blacklisted"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			srv := rejectingServer(t, tt.status, tt.body)
+
+			_, err := taiga.NewAuthAPI(srv.URL).Refresh(t.Context(), "old.refresh.jwt")
+
+			if !errors.Is(err, taiga.ErrSessionExpired) {
+				t.Errorf("got %v, want ErrSessionExpired", err)
+			}
+			if err == nil || err.Error() != tt.wantMsg {
+				t.Errorf("got %q, want %q", err, tt.wantMsg)
+			}
+			rerr, ok := errors.AsType[*taiga.RejectedError](err)
+			if !ok || rerr.Code != tt.status {
+				t.Errorf("got %v, want RejectedError with code %d", err, tt.status)
+			}
+		})
+	}
+}
+
 func TestRefreshReportsUnreachableHost(t *testing.T) {
 	srv := httptest.NewServer(http.NotFoundHandler())
 	url := srv.URL
@@ -194,6 +293,17 @@ func TestRefreshReportsUnreachableHost(t *testing.T) {
 	if !errors.Is(err, taiga.ErrUnreachable) {
 		t.Errorf("got %v, want ErrUnreachable", err)
 	}
+}
+
+// rejectingServer answers every request with status and body.
+func rejectingServer(t *testing.T, status int, body string) *httptest.Server {
+	t.Helper()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(status)
+		_, _ = w.Write([]byte(body))
+	}))
+	t.Cleanup(srv.Close)
+	return srv
 }
 
 // writeFixture answers with the fixture file name from testdata.
