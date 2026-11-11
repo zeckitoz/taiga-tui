@@ -69,7 +69,7 @@ func TestMeSendsBearerTokenAndMapsTeamMember(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := domain.TeamMember{ID: 42, Username: "alice", FullName: "Alice Example"}
+	want := domain.TeamMember{ID: 368, Username: "member-3", FullName: "Member 3"}
 	if got != want {
 		t.Errorf("got %+v, want %+v", got, want)
 	}
@@ -82,20 +82,24 @@ func TestMeSendsBearerTokenAndMapsTeamMember(t *testing.T) {
 func TestProjectsListsProjectsOfMemberWithoutPagination(t *testing.T) {
 	srv := newFixtureServer(t, map[string]string{"/api/v1/projects": "projects.json"})
 
-	got, err := taiga.NewClient(srv.URL, staticToken("t")).Projects(t.Context(), 42)
+	got, err := taiga.NewClient(srv.URL, staticToken("t")).Projects(t.Context(), 368)
 
 	if err != nil {
 		t.Fatal(err)
 	}
 	want := []domain.ProjectSummary{
-		{ID: 7, Name: "Web Shop", Slug: "alice-web-shop", BacklogEnabled: true, KanbanEnabled: true},
-		{ID: 9, Name: "Archive", Slug: "archive-9"},
+		{ID: 396, Name: "Project 3", Slug: "project-3", BacklogEnabled: true, KanbanEnabled: true},
+		{ID: 326, Name: "Project 2", Slug: "project-2", BacklogEnabled: true, KanbanEnabled: true},
+		{ID: 463, Name: "Project 4", Slug: "project-4", BacklogEnabled: true, KanbanEnabled: true},
+		{ID: 478, Name: "Project 5", Slug: "project-5", BacklogEnabled: true, KanbanEnabled: true},
+		{ID: 496, Name: "Test Project", Slug: "test-project", BacklogEnabled: true, KanbanEnabled: true},
+		{ID: 258, Name: "Project 1", Slug: "project-1", BacklogEnabled: true},
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("got  %+v\nwant %+v", got, want)
 	}
 	req := srv.only(t)
-	if m := req.URL.Query().Get("member"); m != "42" {
+	if m := req.URL.Query().Get("member"); m != "368" {
 		t.Errorf("member=%q", m)
 	}
 	if p := req.Header.Get("x-disable-pagination"); p != "1" {
@@ -106,28 +110,30 @@ func TestProjectsListsProjectsOfMemberWithoutPagination(t *testing.T) {
 func TestProjectLoadsBySlugWithStatusesAndMembers(t *testing.T) {
 	srv := newFixtureServer(t, map[string]string{"/api/v1/projects/by_slug": "project_by_slug.json"})
 
-	got, err := taiga.NewClient(srv.URL, staticToken("t")).Project(t.Context(), "alice-web-shop")
+	got, err := taiga.NewClient(srv.URL, staticToken("t")).Project(t.Context(), "test-project")
 
 	if err != nil {
 		t.Fatal(err)
 	}
 	want := domain.Project{
-		ProjectSummary: domain.ProjectSummary{ID: 7, Name: "Web Shop", Slug: "alice-web-shop", BacklogEnabled: true, KanbanEnabled: true},
+		ProjectSummary: domain.ProjectSummary{ID: 496, Name: "Test Project", Slug: "test-project", BacklogEnabled: true, KanbanEnabled: true},
 		UserStoryStatuses: []domain.Status{
-			{ID: 101, Name: "New", Color: "#70728F"},
-			{ID: 102, Name: "In progress", Color: "#E47C40", WIPLimit: 3},
-			{ID: 103, Name: "Done", Color: "#A8E440", Closed: true},
-			{ID: 104, Name: "Archived", Color: "#5C3566", Closed: true, Archived: true},
+			{ID: 2949, Name: "New", Color: "#70728F"},
+			{ID: 2950, Name: "Ready", Color: "#E44057"},
+			{ID: 2951, Name: "In progress", Color: "#E47C40", WIPLimit: 3},
+			{ID: 2952, Name: "Ready for test", Color: "#E4CE40"},
+			{ID: 2953, Name: "Done", Color: "#A8E440", Closed: true},
+			{ID: 2954, Name: "Archived", Color: "#A9AABC", Closed: true, Archived: true},
 		},
 		Members: []domain.TeamMember{
-			{ID: 42, Username: "alice", FullName: "Alice Example"},
-			{ID: 43, Username: "bkoch", FullName: "bkoch"},
+			{ID: 368, Username: "member-3", FullName: "Member 3"},
+			{ID: 386, Username: "member-4", FullName: "Member 4"},
 		},
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("got  %+v\nwant %+v", got, want)
 	}
-	if s := srv.only(t).URL.Query().Get("slug"); s != "alice-web-shop" {
+	if s := srv.only(t).URL.Query().Get("slug"); s != "test-project" {
 		t.Errorf("slug=%q", s)
 	}
 }
@@ -135,30 +141,78 @@ func TestProjectLoadsBySlugWithStatusesAndMembers(t *testing.T) {
 func TestKanbanLoadsUserStoriesOfActiveStatuses(t *testing.T) {
 	srv := newFixtureServer(t, map[string]string{"/api/v1/userstories": "userstories_kanban.json"})
 
-	got, err := taiga.NewClient(srv.URL, staticToken("t")).Kanban(t.Context(), 7)
+	got, err := taiga.NewClient(srv.URL, staticToken("t")).Kanban(t.Context(), 496)
 
 	if err != nil {
 		t.Fatal(err)
 	}
 	want := []domain.UserStory{
 		{
-			ID: 501, Ref: 12, Title: "Checkout with credit card", Status: 102,
-			Assignees: []int64{43, 42}, KanbanOrder: 1700000000002, Version: 4,
+			ID: 10213, Ref: 1, Title: "A", Status: 2951,
+			Assignees: []int64{386, 368}, KanbanOrder: 1794413075166346, Version: 7,
 			Tasks: domain.TaskProgress{Done: 1, Total: 2},
 		},
-		{ID: 502, Ref: 15, Title: "Product search", Status: 101, KanbanOrder: 1700000000001, Version: 1},
+		{ID: 10214, Ref: 2, Title: "B", Status: 2949, KanbanOrder: 1794413084345230, Version: 1},
+		{
+			ID: 10215, Ref: 3, Title: "C", Status: 2952,
+			Assignees: []int64{386}, KanbanOrder: 1794413108582883, Version: 3,
+			Tasks: domain.TaskProgress{Total: 1},
+		},
+		{ID: 10216, Ref: 4, Title: "D", Status: 2953, Assignees: []int64{368}, KanbanOrder: 1794413124555477, Version: 1},
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("got  %+v\nwant %+v", got, want)
 	}
 	req := srv.only(t)
 	q := req.URL.Query()
-	if q.Get("project") != "7" || q.Get("status__is_archived") != "false" || q.Get("include_tasks") != "1" {
+	if q.Get("project") != "496" || q.Get("status__is_archived") != "false" || q.Get("include_tasks") != "1" {
 		t.Errorf("query %v", q)
 	}
 	if p := req.Header.Get("x-disable-pagination"); p != "1" {
 		t.Errorf("x-disable-pagination %q", p)
 	}
+}
+
+// The test project cannot provide these cases, so they are answered inline.
+
+func TestProjectFallsBackToUsernameForMemberWithoutFullName(t *testing.T) {
+	srv := newInlineServer(t, `{"id": 7, "name": "Web Shop", "slug": "web-shop", "us_statuses": null,
+		"members": [{"id": 43, "username": "bkoch", "full_name_display": ""}]}`)
+
+	got, err := taiga.NewClient(srv.URL, staticToken("t")).Project(t.Context(), "web-shop")
+
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []domain.TeamMember{{ID: 43, Username: "bkoch", FullName: "bkoch"}}
+	if !reflect.DeepEqual(got.Members, want) {
+		t.Errorf("got  %+v\nwant %+v", got.Members, want)
+	}
+}
+
+func TestKanbanCountsNoTasksWhenTaigaSendsNull(t *testing.T) {
+	srv := newInlineServer(t, `[{"id": 502, "ref": 15, "subject": "Product search", "status": 101,
+		"assigned_to": null, "assigned_users": [], "kanban_order": 1, "version": 1, "tasks": null}]`)
+
+	got, err := taiga.NewClient(srv.URL, staticToken("t")).Kanban(t.Context(), 7)
+
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []domain.UserStory{{ID: 502, Ref: 15, Title: "Product search", Status: 101, KanbanOrder: 1, Version: 1}}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("got  %+v\nwant %+v", got, want)
+	}
+}
+
+// newInlineServer answers every request with body.
+func newInlineServer(t *testing.T, body string) *httptest.Server {
+	t.Helper()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(body))
+	}))
+	t.Cleanup(srv.Close)
+	return srv
 }
 
 func TestClientMapsFailuresToTypedErrors(t *testing.T) {
