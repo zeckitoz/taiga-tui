@@ -210,22 +210,18 @@ func userStoryRow(r board.TaskboardRow, w int) string {
 }
 
 // taskRow renders a Task: marker, ref, title, Status label and Assignee.
+// Under the cursor the row loses its colors and is shown reversed.
 func taskRow(r board.TaskboardRow, c taskColumns, w int) string {
-	if r.Selected {
-		marker := "    "
-		if r.Mine {
-			marker = "  ▍ "
-		}
-		line := marker + fit(ref(r.Ref), c.ref) + " " + fit(plainText(r.Title), c.title) + "  " +
-			fit(ansi.Strip(statusLabel(r.Status)), c.status) + "  " + fit(taskAssignee(r.Assignees, c.fullNames, false), c.who) + " "
-		return cursorStyle.Render(fit(line, w))
-	}
 	marker := "    "
 	if r.Mine {
 		marker = "  " + mineStyle.Render("▍") + " "
 	}
-	return marker + faintStyle.Render(fit(ref(r.Ref), c.ref)) + " " + fit(plainText(r.Title), c.title) + "  " +
+	line := marker + faintStyle.Render(fit(ref(r.Ref), c.ref)) + " " + fit(plainText(r.Title), c.title) + "  " +
 		fit(statusLabel(r.Status), c.status) + "  " + fit(taskAssignee(r.Assignees, c.fullNames, true), c.who) + " "
+	if r.Selected {
+		return cursorStyle.Render(fit(ansi.Strip(line), w))
+	}
+	return line
 }
 
 // taskAssignee names the Assignee of a Task by full name or initials, the

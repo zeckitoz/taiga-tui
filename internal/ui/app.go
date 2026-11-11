@@ -500,17 +500,11 @@ func (a App) projectLoaded(p domain.Project) (App, tea.Cmd) {
 	b := a.boardFor(p)
 	if last := a.state.LastBoard; !a.picked && last != "" && last != b {
 		a.status = append(a.status, statusMsg{
-			text: boardNames[last].short + " is disabled in " + p.Name + ", showing " + boardNames[b].full,
+			text: boardOps(last).shortName + " is disabled in " + p.Name + ", showing " + boardOps(b).name,
 			hint: true,
 		})
 	}
 	return a.openBoard(b)
-}
-
-// boardNames name the boards in texts, in full and short.
-var boardNames = map[config.Board]struct{ full, short string }{
-	config.BoardKanban:    {"Kanban Board", "Kanban"},
-	config.BoardTaskboard: {"Taskboard", "Taskboard"},
 }
 
 // boardFor returns the board to open in p: the last used board at start,
@@ -521,11 +515,8 @@ func (a App) boardFor(p domain.Project) config.Board {
 	if a.picked || b == "" {
 		b = config.BoardKanban
 	}
-	switch {
-	case b == config.BoardKanban && !p.KanbanEnabled:
-		return config.BoardTaskboard
-	case b == config.BoardTaskboard && !p.BacklogEnabled:
-		return config.BoardKanban
+	if !boardOps(b).enabled(p.ProjectSummary) {
+		return otherBoard(b)
 	}
 	return b
 }
@@ -538,9 +529,12 @@ func (a App) openBoard(b config.Board) (App, tea.Cmd) {
 		a.state.LastBoard = b
 		a = a.saveState()
 	}
-	if b == config.BoardKanban {
-		return a.loadKanban()
-	}
+	return boardOps(b).open(a)
+}
+
+// openTaskboard shows the Taskboard: the one loaded before while it
+// refreshes, or else that of the Current Sprint.
+func (a App) openTaskboard() (App, tea.Cmd) {
 	if tb, ok := a.sprints.Taskboard(); ok {
 		a.screen = screenBoard
 		a.scrollBoard()
@@ -736,9 +730,10 @@ func (a App) loadDetail() (App, tea.Cmd) {
 	if !a.detailOpen || a.screen != screenBoard {
 		return a, nil
 	}
-	if a.board == config.BoardTaskboard {
-		return a.loadTaskDetail()
-	}
+	return a.shownBoard().loadDetail(a)
+}
+
+func (a App) loadUserStoryDetail() (App, tea.Cmd) {
 	if !a.kanban.Loaded() {
 		return a, nil
 	}
@@ -804,14 +799,15 @@ func (a App) updateBoard(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a, tea.Quit
 	case "b":
 		// A temporary key until the command palette switches boards.
-		if other := a.otherBoard(); other != "" {
+		if other := otherBoard(a.board); boardOps(other).enabled(a.project.ProjectSummary) {
 			return a.openBoard(other)
 		}
 		return a, nil
 	}
-	if a.board == config.BoardTaskboard {
-		return a.updateTaskboard(key)
-	}
+	return a.shownBoard().update(a, key)
+}
+
+func (a App) updateKanban(key tea.KeyPressMsg) (App, tea.Cmd) {
 	switch key.String() {
 	case "r":
 		if a.kanban.Loaded() {
@@ -832,19 +828,7 @@ func (a App) updateBoard(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return a.loadDetail()
 }
 
-// otherBoard returns the board of the project that is not shown, or "" if
-// it is disabled.
-func (a App) otherBoard() config.Board {
-	if a.board == config.BoardKanban && a.project.BacklogEnabled {
-		return config.BoardTaskboard
-	}
-	if a.board == config.BoardTaskboard && a.project.KanbanEnabled {
-		return config.BoardKanban
-	}
-	return ""
-}
-
-func (a App) updateTaskboard(key tea.KeyPressMsg) (tea.Model, tea.Cmd) {
+func (a App) updateTaskboard(key tea.KeyPressMsg) (App, tea.Cmd) {
 	tb, ok := a.sprints.Taskboard()
 	if !ok {
 		// The project has no Sprints. Until the command palette exists,
@@ -889,18 +873,20 @@ func (a App) updateTaskboard(key tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 }
 
 // scrollBoard keeps the selected row of the board visible.
-func (a *App) scrollBoard() {
-	if a.board == config.BoardTaskboard {
-		tb, _ := a.sprints.Taskboard()
-		lineOf, n := taskboardLines(tb.Rows())
-		sel := -1
-		if i := tb.SelectedIndex(); i >= 0 {
-			sel = lineOf[i]
-		}
-		l := layoutBoard(a.width, a.bodyHeight(), a.detailOpen)
-		a.taskboardTop = scrollTop(a.taskboardTop, sel, n, l.listH)
-		return
+func (a *App) scrollBoard() { a.shownBoard().scroll(a) }
+
+func (a *App) scrollTaskboard() {
+	tb, _ := a.sprints.Taskboard()
+	lineOf, n := taskboardLines(tb.Rows())
+	sel := -1
+	if i := tb.SelectedIndex(); i >= 0 {
+		sel = lineOf[i]
 	}
+	l := layoutBoard(a.width, a.bodyHeight(), a.detailOpen)
+	a.taskboardTop = scrollTop(a.taskboardTop, sel, n, l.listH)
+}
+
+func (a *App) scrollKanban() {
 	n := len(a.kanban.Rows())
 	l := layoutBoard(a.width, a.bodyHeight()-kanbanChromeLines, a.detailOpen)
 	a.kanbanTop = scrollTop(a.kanbanTop, a.kanban.SelectedIndex(), n, l.listH)
@@ -923,7 +909,7 @@ func (a App) View() tea.View {
 	case screenPicker:
 		content = a.framed("Select project", a.pickerBody(), a.pickerFooter())
 	case screenSprintPicker:
-		path := projectStyle.Render(a.project.Name) + faintStyle.Render(" › ") + titleStyle.Render("Select sprint")
+		path := projectStyle.Render(a.project.Name) + pathSep + titleStyle.Render("Select sprint")
 		keys := pickerKeys
 		if a.sprintPickerBack {
 			keys = strings.Replace(keys, "esc quit", "esc back", 1)
@@ -986,29 +972,33 @@ func (a App) pickerFooter() string {
 
 // boardPath is the header of the board screen.
 func (a App) boardPath() string {
-	sep := faintStyle.Render(" › ")
-	path := projectStyle.Render(a.project.Name) + sep
-	if a.board == config.BoardKanban {
-		return path + titleStyle.Render("Kanban Board")
-	}
+	return projectStyle.Render(a.project.Name) + pathSep + a.shownBoard().path(a)
+}
+
+func (a App) kanbanPath() string { return titleStyle.Render("Kanban Board") }
+
+func (a App) taskboardPath() string {
 	tb, ok := a.sprints.Taskboard()
 	if !ok {
-		return path + titleStyle.Render("Taskboard")
+		return titleStyle.Render("Taskboard")
 	}
-	path += "Taskboard" + sep
+	path := "Taskboard" + pathSep
 	full := path + sprintPath(tb.Sprint(), a.today(), true)
 	// Leave out the date range rather than the Team Member's name.
-	if lipgloss.Width(full)+lipgloss.Width(a.me.FullName)+3 <= a.width {
+	head := projectStyle.Render(a.project.Name) + pathSep + full
+	if lipgloss.Width(head)+lipgloss.Width(a.me.FullName)+3 <= a.width {
 		return full
 	}
 	return path + sprintPath(tb.Sprint(), a.today(), false)
 }
 
-func (a App) boardBody() string {
-	h := a.bodyHeight()
-	if a.board == config.BoardKanban {
-		return renderKanban(a.kanban, a.kanbanTop, a.width, h, a.detailOpen)
-	}
+func (a App) boardBody() string { return a.shownBoard().body(a, a.bodyHeight()) }
+
+func (a App) kanbanBody(h int) string {
+	return renderKanban(a.kanban, a.kanbanTop, a.width, h, a.detailOpen)
+}
+
+func (a App) taskboardBody(h int) string {
 	tb, ok := a.sprints.Taskboard()
 	if !ok {
 		return centered(a.width, h,
@@ -1018,19 +1008,20 @@ func (a App) boardBody() string {
 	return renderTaskboard(tb, a.taskboardTop, a.width, h, a.detailOpen)
 }
 
-func (a App) boardKeys() []string {
+func (a App) boardKeys() []string { return a.shownBoard().keys(a) }
+
+func (a App) kanbanFooter() []string { return kanbanKeys(a.project.BacklogEnabled) }
+
+func (a App) taskboardFooter() []string {
 	tb, ok := a.sprints.Taskboard()
-	switch {
-	case a.board == config.BoardKanban:
-		return kanbanKeys(a.project.BacklogEnabled)
-	case !ok:
-		keys := []string{": menu", "r refresh"}
-		if a.project.KanbanEnabled {
-			keys = append(keys, "b kanban")
-		}
-		return append(keys, "q quit")
+	if ok {
+		return taskboardKeys(tb, a.project.KanbanEnabled)
 	}
-	return taskboardKeys(tb, a.project.KanbanEnabled)
+	keys := []string{": menu", "r refresh"}
+	if a.project.KanbanEnabled {
+		keys = append(keys, "b kanban")
+	}
+	return append(keys, "q quit")
 }
 
 // statusLines renders the status line, indented by indent cells. Long
