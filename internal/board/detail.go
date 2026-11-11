@@ -58,6 +58,75 @@ type description struct {
 	err        error
 }
 
+// descriptions keeps the descriptions loaded for a board by item ID. Its
+// methods return a new store and never change the receiver.
+type descriptions struct {
+	// generation counts the loads of the board; results of description
+	// loads from an earlier generation are dropped.
+	generation int
+	byID       map[int64]description
+}
+
+// reloaded marks all descriptions as outdated: they stay visible until they
+// are loaded again.
+func (d descriptions) reloaded() descriptions {
+	d.generation++
+	return d
+}
+
+// start begins loading the description of id and returns the generation of
+// the load, unless it was loaded or is loading since the last reload. A
+// failed load is tried again.
+func (d descriptions) start(id int64) (descriptions, int, bool) {
+	e, known := d.byID[id]
+	if known && e.generation == d.generation && (!e.done || e.err == nil) {
+		return d, 0, false
+	}
+	e.generation, e.done, e.err = d.generation, false, nil
+	return d.with(id, e), d.generation, true
+}
+
+// loaded takes text as the result of the load of id in generation.
+func (d descriptions) loaded(id int64, generation int, text string) descriptions {
+	return d.ended(id, generation, func(e *description) { e.text, e.loaded = text, true })
+}
+
+// failed records that the load of id in generation failed with err.
+func (d descriptions) failed(id int64, generation int, err error) descriptions {
+	return d.ended(id, generation, func(e *description) { e.err = err })
+}
+
+func (d descriptions) ended(id int64, generation int, apply func(*description)) descriptions {
+	e, ok := d.byID[id]
+	if !ok || generation != d.generation || e.generation != d.generation {
+		return d // a result of a load before the last reload
+	}
+	e.done = true
+	apply(&e)
+	return d.with(id, e)
+}
+
+func (d descriptions) with(id int64, e description) descriptions {
+	d.byID = maps.Clone(d.byID) // never share the map with the receiver
+	if d.byID == nil {
+		d.byID = map[int64]description{}
+	}
+	d.byID[id] = e
+	return d
+}
+
+// get returns the description of id and the state of its load.
+func (d descriptions) get(id int64) Description {
+	e := d.byID[id]
+	switch {
+	case e.done && e.err != nil:
+		return Description{State: DescriptionFailed, Err: e.err}
+	case e.loaded:
+		return Description{State: DescriptionLoaded, Text: e.text}
+	}
+	return Description{State: DescriptionLoading}
+}
+
 // LoadUserStory is the effect of loading a User Story with its description.
 // Its result goes back into UserStoryLoaded or UserStoryFailed.
 type LoadUserStory struct {
@@ -73,49 +142,21 @@ func (k Kanban) LoadDetail() (Kanban, LoadUserStory, bool) {
 	if !ok {
 		return k, LoadUserStory{}, false
 	}
-	e, known := k.descriptions[d.ID]
-	if known && e.generation == k.generation && (!e.done || e.err == nil) {
-		return k, LoadUserStory{}, false
-	}
-	e.generation, e.done, e.err = k.generation, false, nil
-	return k.withDescription(d.ID, e), LoadUserStory{ID: d.ID, Generation: k.generation}, true
+	var gen int
+	k.descriptions, gen, ok = k.descriptions.start(d.ID)
+	return k, LoadUserStory{ID: d.ID, Generation: gen}, ok
 }
 
 // UserStoryLoaded takes the description from the result of load.
 func (k Kanban) UserStoryLoaded(load LoadUserStory, s domain.UserStory) Kanban {
-	return k.loadEnded(load, func(e *description) { e.text, e.loaded = s.Description, true })
+	k.descriptions = k.descriptions.loaded(load.ID, load.Generation, s.Description)
+	return k
 }
 
 // UserStoryFailed records that load failed with err.
 func (k Kanban) UserStoryFailed(load LoadUserStory, err error) Kanban {
-	return k.loadEnded(load, func(e *description) { e.err = err })
-}
-
-func (k Kanban) loadEnded(load LoadUserStory, apply func(*description)) Kanban {
-	e, ok := k.descriptions[load.ID]
-	if !ok || load.Generation != k.generation || e.generation != k.generation {
-		return k // a result of a load before the last Reload
-	}
-	e.done = true
-	apply(&e)
-	return k.withDescription(load.ID, e)
-}
-
-func (k Kanban) withDescription(id int64, e description) Kanban {
-	k.descriptions = maps.Clone(k.descriptions) // never share the map with the receiver
-	k.descriptions[id] = e
+	k.descriptions = k.descriptions.failed(load.ID, load.Generation, err)
 	return k
-}
-
-func (k Kanban) description(id int64) Description {
-	e := k.descriptions[id]
-	switch {
-	case e.done && e.err != nil:
-		return Description{State: DescriptionFailed, Err: e.err}
-	case e.loaded:
-		return Description{State: DescriptionLoaded, Text: e.text}
-	}
-	return Description{State: DescriptionLoading}
 }
 
 // Detail returns the detail of the selected User Story, or false if the
@@ -132,7 +173,7 @@ func (k Kanban) Detail() (Detail, bool) {
 		Title:       s.Title,
 		SprintName:  s.SprintName,
 		Tasks:       s.Tasks,
-		Description: k.description(s.ID),
+		Description: k.descriptions.get(s.ID),
 	}
 	if j := slices.IndexFunc(k.statuses, func(st domain.Status) bool { return st.ID == s.Status }); j >= 0 {
 		d.Status = k.statuses[j]
