@@ -170,3 +170,70 @@ func TestTaskboardHoldsUserStoriesAndTasksOfSprintWithoutDescriptions(t *testing
 		t.Errorf("unknown Task: %v, want ErrNotFound", err)
 	}
 }
+
+func TestPatchUserStoryChangesStatusAndBumpsVersionLikeTaiga(t *testing.T) {
+	f := newFake()
+
+	got, err := f.PatchUserStory(t.Context(), 10, 0, domain.UserStoryPatch{Status: 2})
+
+	if err != nil || got.Status != 2 || got.Version != 1 || got.Description != "Pay by card." {
+		t.Errorf("got %+v, %v", got, err)
+	}
+	if s, _ := f.UserStory(t.Context(), 10); s.Status != 2 || s.Version != 1 {
+		t.Errorf("stored %+v", s)
+	}
+	if _, err := f.PatchUserStory(t.Context(), 10, 0, domain.UserStoryPatch{Status: 1}); !errors.Is(err, taiga.ErrConflict) {
+		t.Errorf("outdated version: %v, want ErrConflict", err)
+	}
+	if _, err := f.PatchUserStory(t.Context(), 99, 0, domain.UserStoryPatch{Status: 1}); !errors.Is(err, taiga.ErrNotFound) {
+		t.Errorf("unknown User Story: %v, want ErrNotFound", err)
+	}
+}
+
+func TestPatchTaskChangesStatusAndBumpsVersionLikeTaiga(t *testing.T) {
+	f := newFake()
+	f.SetTasks(7, domain.Task{ID: 20, Status: 1, Version: 4})
+
+	got, err := f.PatchTask(t.Context(), 20, 4, domain.TaskPatch{Status: 3})
+
+	if err != nil || got.Status != 3 || got.Version != 5 {
+		t.Errorf("got %+v, %v", got, err)
+	}
+	if task, _ := f.Task(t.Context(), 20); task.Status != 3 || task.Version != 5 {
+		t.Errorf("stored %+v", task)
+	}
+	if _, err := f.PatchTask(t.Context(), 20, 4, domain.TaskPatch{Status: 1}); !errors.Is(err, taiga.ErrConflict) {
+		t.Errorf("outdated version: %v, want ErrConflict", err)
+	}
+	if _, err := f.PatchTask(t.Context(), 99, 0, domain.TaskPatch{Status: 1}); !errors.Is(err, taiga.ErrNotFound) {
+		t.Errorf("unknown Task: %v, want ErrNotFound", err)
+	}
+}
+
+func TestPatchesNeverChangeTheDataPassedIn(t *testing.T) {
+	stories := []domain.UserStory{{ID: 10, Status: 1}}
+	tasks := []domain.Task{{ID: 20, Status: 1}}
+	f := taigafake.New(alice)
+	f.AddProject(domain.Project{ProjectSummary: domain.ProjectSummary{ID: 7}}, stories...)
+	f.SetTasks(7, tasks...)
+
+	_, _ = f.PatchUserStory(t.Context(), 10, 0, domain.UserStoryPatch{Status: 2})
+	_, _ = f.PatchTask(t.Context(), 20, 0, domain.TaskPatch{Status: 2})
+
+	if stories[0].Status != 1 || tasks[0].Status != 1 {
+		t.Errorf("changed %+v and %+v", stories[0], tasks[0])
+	}
+}
+
+func TestSetProjectReplacesProjectAndKeepsItsUserStories(t *testing.T) {
+	f := newFake()
+
+	f.SetProject(domain.Project{ProjectSummary: domain.ProjectSummary{ID: 7, Slug: "web-shop", Name: "Renamed"}})
+
+	if p, _ := f.Project(t.Context(), "web-shop"); p.Name != "Renamed" {
+		t.Errorf("got %+v", p)
+	}
+	if list, _ := f.Kanban(t.Context(), 7); len(list) != 2 {
+		t.Errorf("User Stories %+v", list)
+	}
+}

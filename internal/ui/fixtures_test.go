@@ -31,7 +31,8 @@ var webShop = domain.Project{
 		{ID: 204, Name: "Closed", Color: "#A8E440", Closed: true},
 		{ID: 205, Name: "Needs Info", Color: "#5178D3"},
 	},
-	Members: []domain.TeamMember{alice, bea, carla},
+	Members:     []domain.TeamMember{alice, bea, carla},
+	Permissions: domain.Permissions{ModifyTask: true, ModifyUserStory: true},
 }
 
 // today is the date of the fixed clock, inside Sprint 4.

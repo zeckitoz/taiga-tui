@@ -16,6 +16,10 @@ type Taskboard struct {
 	project domain.Project
 	me      int64
 	sprint  domain.Sprint
+	// content is the content as last loaded or saved; groups show it with
+	// the Statuses being saved.
+	content domain.SprintContent
+	saves   saves
 	groups  []group
 	// collapsed holds the collapsed groups by User Story ID, 0 for the
 	// group without User Story.
@@ -69,6 +73,8 @@ type TaskboardRow struct {
 	Assignees []Assignee
 	Mine      bool
 	Selected  bool
+	// Saving tells that a Status Change of the row's item is being saved.
+	Saving bool
 }
 
 // TaskboardDetail is what the detail view shows of the selected row.
@@ -112,10 +118,26 @@ type LoadTask struct {
 // seen by the Team Member with ID me. All groups are expanded and the first
 // row is selected.
 func NewTaskboard(p domain.Project, sprint domain.Sprint, content domain.SprintContent, me int64) Taskboard {
-	t := Taskboard{project: p, me: me, sprint: sprint, groups: groupContent(content)}
+	t := Taskboard{project: p, me: me, sprint: sprint, content: content}.regrouped()
 	if rows := t.items(); len(rows) > 0 {
 		t.cursor = rows[0].item
 	}
+	return t
+}
+
+// regrouped groups the content with the Statuses being saved.
+func (t Taskboard) regrouped() Taskboard {
+	c := domain.SprintContent{
+		UserStories: slices.Clone(t.content.UserStories),
+		Tasks:       slices.Clone(t.content.Tasks),
+	}
+	for i, s := range c.UserStories {
+		c.UserStories[i].Status = t.saves.status(UserStoryItem, s.ID, s.Status)
+	}
+	for i, task := range c.Tasks {
+		c.Tasks[i].Status = t.saves.status(TaskItem, task.ID, task.Status)
+	}
+	t.groups = groupContent(c)
 	return t
 }
 
@@ -151,7 +173,8 @@ func groupContent(c domain.SprintContent) []group {
 // again.
 func (t Taskboard) Reload(c domain.SprintContent) Taskboard {
 	old := t.SelectedIndex()
-	t.groups = groupContent(c)
+	t.content = c
+	t = t.regrouped()
 	t.descriptions = t.descriptions.reloaded()
 	rows := t.items()
 	if old < 0 || slices.ContainsFunc(rows, func(r itemRow) bool { return r.item == t.cursor }) {
@@ -184,6 +207,14 @@ type itemRow struct {
 }
 
 func (r itemRow) selectable() bool { return r.kind != RowNoTasks }
+
+// kind tells whether the item is a Task or a User Story.
+func (it item) kind() ItemKind {
+	if it.task {
+		return TaskItem
+	}
+	return UserStoryItem
+}
 
 func (t Taskboard) items() []itemRow {
 	var rows []itemRow
@@ -242,6 +273,7 @@ func (t Taskboard) Rows() []TaskboardRow {
 			rows[i] = TaskboardRow{Kind: RowNoTasks}
 		}
 		rows[i].Selected = it.selectable() && it.item == t.cursor
+		rows[i].Saving = it.kind != RowNoTasks && t.saves.saving(it.item.kind(), it.item.id)
 	}
 	return rows
 }
@@ -424,3 +456,106 @@ func (t Taskboard) TaskFailed(load LoadTask, err error) Taskboard {
 	t.descriptions = t.descriptions.failed(load.ID, load.Generation, err)
 	return t
 }
+
+// ChangeStatus moves the selected Task or User Story to the next (dir 1) or
+// previous (dir -1) Status of its kind right away, keeping the row in
+// place, and returns the effect of saving the change. It returns a
+// Rejection instead if the change cannot be made, and neither if no item is
+// selected.
+func (t Taskboard) ChangeStatus(dir int) (Taskboard, Effect, error) {
+	i := t.SelectedIndex()
+	if i < 0 {
+		return t, nil, nil
+	}
+	r := t.items()[i]
+	gr := t.groups[r.group]
+	var (
+		save SaveStatus
+		err  error
+		sv   saves
+	)
+	switch {
+	case r.kind == RowTask:
+		task := gr.tasks[r.task]
+		sv, save, err = t.saves.changeStatus(t.project, TaskItem, task.ID, task.Ref, task.Status, task.Version, dir)
+	case gr.userStory.ID != 0:
+		us := gr.userStory
+		sv, save, err = t.saves.changeStatus(t.project, UserStoryItem, us.ID, us.Ref, us.Status, us.Version, dir)
+	default:
+		return t, nil, nil // the group of Tasks without User Story
+	}
+	if err != nil {
+		return t, nil, err
+	}
+	t.saves = sv
+	return t.regrouped(), save, nil
+}
+
+// TaskSaved takes the Task as Taiga saved it from the result of save and
+// returns the effect of reloading its User Story, whose closed state and
+// progress may have changed with it. It returns false if the result no
+// longer counts.
+func (t Taskboard) TaskSaved(save SaveStatus, saved domain.Task) (Taskboard, Effect, bool) {
+	var ok bool
+	if t.saves, ok = t.saves.end(save); !ok {
+		return t, nil, false
+	}
+	if i := slices.IndexFunc(t.content.Tasks, func(task domain.Task) bool { return task.ID == saved.ID }); i >= 0 {
+		t.content.Tasks = slices.Clone(t.content.Tasks) // never share the list with the receiver
+		t.content.Tasks[i] = saved
+	}
+	t = t.regrouped()
+	if saved.UserStory == 0 || !slices.ContainsFunc(t.content.UserStories, func(s domain.UserStory) bool { return s.ID == saved.UserStory }) {
+		return t, nil, true
+	}
+	return t, ReloadUserStory{ID: saved.UserStory, Sprint: t.sprint.ID}, true
+}
+
+// UserStorySaved takes the User Story as Taiga saved it from the result of
+// save, or returns false if the result no longer counts.
+func (t Taskboard) UserStorySaved(save SaveStatus, saved domain.UserStory) (Taskboard, bool) {
+	var ok bool
+	if t.saves, ok = t.saves.end(save); !ok {
+		return t, false
+	}
+	return t.withUserStory(saved).regrouped(), true
+}
+
+// StatusNotSaved undoes the change of save and returns the effect of
+// reloading the board if the failure asks for it. It returns false if the
+// result no longer counts.
+func (t Taskboard) StatusNotSaved(save SaveStatus, f SaveFailure) (Taskboard, Effect, bool) {
+	var ok bool
+	if t.saves, ok = t.saves.end(save); !ok {
+		return t, nil, false
+	}
+	return t.regrouped(), reloadOn(f), true
+}
+
+// UserStoryReloaded takes the User Story from the result of load, unless it
+// was loaded for another Sprint.
+func (t Taskboard) UserStoryReloaded(load ReloadUserStory, s domain.UserStory) Taskboard {
+	if load.Sprint != t.sprint.ID {
+		return t
+	}
+	return t.withUserStory(s).regrouped()
+}
+
+// withUserStory replaces the User Story with the ID of s in the content.
+func (t Taskboard) withUserStory(s domain.UserStory) Taskboard {
+	if i := slices.IndexFunc(t.content.UserStories, func(us domain.UserStory) bool { return us.ID == s.ID }); i >= 0 {
+		t.content.UserStories = slices.Clone(t.content.UserStories) // never share the list with the receiver
+		t.content.UserStories[i] = s
+	}
+	return t
+}
+
+// DropSaves forgets the Status Changes being saved, e.g. when the Team
+// Member leaves the board. Their results no longer count.
+func (t Taskboard) DropSaves() Taskboard {
+	t.saves = t.saves.dropped()
+	return t.regrouped()
+}
+
+// Saving reports whether any Status Change is being saved.
+func (t Taskboard) Saving() bool { return t.saves.any() }

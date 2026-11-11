@@ -26,14 +26,19 @@ const noUserStory = "Tasks without user story"
 
 // taskboardKeys returns the footer of the Taskboard for the selected row.
 func taskboardKeys(tb board.Taskboard) []string {
-	keys := []string{"↑/↓ move", "←/→ fold", "enter fold", "r refresh", ": menu", "? help"}
-	switch {
-	case tb.Empty():
-		keys = []string{"r refresh", ": menu", "? help"}
-	case tb.TaskSelected():
-		keys[2] = "enter detail"
+	if tb.Empty() {
+		return []string{"r refresh", ": menu", "? help"}
 	}
-	return keys
+	var keys []string
+	// The group of Tasks without User Story has no Status.
+	if d, ok := tb.Detail(); ok && (d.Kind == board.RowTask || d.ID != 0) {
+		keys = append(keys, "⇧←/→ status")
+	}
+	enter := "enter fold"
+	if tb.TaskSelected() {
+		enter = "enter detail"
+	}
+	return append(keys, "↑/↓ move", "←/→ fold", enter, "r refresh", ": menu", "? help")
 }
 
 // noSprintsKeys is the hint of a project without Sprints.
@@ -130,15 +135,16 @@ func taskboardLines(rows []board.TaskboardRow) ([]int, int) {
 }
 
 // renderTaskboard renders the Taskboard into a w×h area, showing the list
-// from line top and, if detail is set, the detail view.
-func renderTaskboard(tb board.Taskboard, top, w, h int, detail bool) string {
+// from line top and, if detail is set, the detail view. spin is the frame of
+// the spinner on rows that are saving.
+func renderTaskboard(tb board.Taskboard, top, w, h int, detail bool, spin string) string {
 	if tb.Empty() {
 		return centered(w, h,
 			faintStyle.Render("No user stories in "+plainText(tb.Sprint().Name)), "",
 			faintStyle.Render(": switch sprint · r refresh"))
 	}
 	l := layoutBoard(w, h, detail)
-	list := taskList(tb.Rows(), top, l.listW, l.listH)
+	list := taskList(tb.Rows(), top, l.listW, l.listH, spin)
 	return withDetail(l, w, list, func(inner int, compact bool) []string {
 		d, _ := tb.Detail()
 		return taskboardDetail(d, inner, compact)
@@ -168,8 +174,9 @@ func columnsFor(rows []board.TaskboardRow, w int) taskColumns {
 	return c
 }
 
-// taskList renders the rows as w×h lines from line top.
-func taskList(rows []board.TaskboardRow, top, w, h int) string {
+// taskList renders the rows as w×h lines from line top, with spin in front
+// of rows that are saving.
+func taskList(rows []board.TaskboardRow, top, w, h int, spin string) string {
 	cols := columnsFor(rows, w)
 	lineOf, n := taskboardLines(rows)
 	all := make([]string, n)
@@ -177,9 +184,9 @@ func taskList(rows []board.TaskboardRow, top, w, h int) string {
 		var line string
 		switch r.Kind {
 		case board.RowUserStory:
-			line = userStoryRow(r, w)
+			line = userStoryRow(r, w, spin)
 		case board.RowTask:
-			line = taskRow(r, cols, w)
+			line = taskRow(r, cols, w, spin)
 		case board.RowNoTasks:
 			line = "    " + faintStyle.Render("No tasks")
 		}
@@ -197,7 +204,7 @@ func taskList(rows []board.TaskboardRow, top, w, h int) string {
 
 // userStoryRow renders the heading of a group: the collapse arrow, ref and
 // title in bold accent color and the task progress on the right.
-func userStoryRow(r board.TaskboardRow, w int) string {
+func userStoryRow(r board.TaskboardRow, w int, spin string) string {
 	arrow := "▾"
 	if !r.Expanded {
 		arrow = "▸"
@@ -212,18 +219,21 @@ func userStoryRow(r board.TaskboardRow, w int) string {
 		prog = progress(r.Tasks, !r.Selected)
 	}
 	pw := ansi.StringWidth(prog)
+	marker := savingMarker(r.Saving, spin)
 	if r.Selected {
-		return cursorStyle.Bold(true).Render(fit(" "+fit(title, w-pw-4)+"  "+prog+" ", w))
+		return cursorStyle.Bold(true).Render(fit(ansi.Strip(marker)+fit(title, w-pw-4)+"  "+prog+" ", w))
 	}
-	return " " + titleStyle.Render(fit(title, w-pw-4)) + "  " + prog + " "
+	return marker + titleStyle.Render(fit(title, w-pw-4)) + "  " + prog + " "
 }
 
 // taskRow renders a Task: marker, ref, title, Status label and Assignee.
 // Under the cursor the row loses its colors and is shown reversed.
-func taskRow(r board.TaskboardRow, c taskColumns, w int) string {
-	marker := "    "
+func taskRow(r board.TaskboardRow, c taskColumns, w int, spin string) string {
+	marker := " " + savingMarker(r.Saving, spin)
 	if r.Mine {
-		marker = "  " + mineStyle.Render("▍") + " "
+		marker += mineStyle.Render("▍") + " "
+	} else {
+		marker += "  "
 	}
 	line := marker + faintStyle.Render(fit(ref(r.Ref), c.ref)) + " " + fit(plainText(r.Title), c.title) + "  " +
 		fit(statusLabel(r.Status), c.status) + "  " + fit(taskAssignee(r.Assignees, c.fullNames, true), c.who) + " "

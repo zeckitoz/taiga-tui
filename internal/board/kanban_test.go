@@ -25,6 +25,7 @@ var project = domain.Project{
 		{ID: 43, Username: "bkoch", FullName: "bkoch"},
 		{ID: 44, Username: "cm", FullName: "Carla de la Mar"},
 	},
+	Permissions: domain.Permissions{ModifyTask: true, ModifyUserStory: true},
 }
 
 var stories = []domain.UserStory{

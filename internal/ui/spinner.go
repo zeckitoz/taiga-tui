@@ -14,12 +14,26 @@ var spinnerFrames = []string{"⣾", "⣽", "⣻", "⢿", "⡿", "⣟", "⣯", "�
 
 const spinnerInterval = 100 * time.Millisecond
 
-// spinnerTickMsg advances the spinner whose run matches.
-type spinnerTickMsg struct{ run int }
+// spinnerID tells the spinners of the App apart.
+type spinnerID int
+
+const (
+	// loadingSpinner shows that a screen is loading.
+	loadingSpinner spinnerID = iota
+	// savingSpinner turns on the rows whose changes are being saved.
+	savingSpinner
+)
+
+// spinnerTickMsg advances the spinner with the ID whose run matches.
+type spinnerTickMsg struct {
+	id  spinnerID
+	run int
+}
 
 // spinner shows activity. Each start begins a new run, so ticks of an earlier
 // run die out instead of speeding up the animation.
 type spinner struct {
+	id     spinnerID
 	tick   TickFunc
 	frame  int
 	run    int
@@ -36,7 +50,7 @@ func (s *spinner) start() tea.Cmd {
 func (s *spinner) stop() { s.active = false }
 
 func (s *spinner) update(msg spinnerTickMsg) tea.Cmd {
-	if !s.active || msg.run != s.run {
+	if !s.active || msg.id != s.id || msg.run != s.run {
 		return nil
 	}
 	s.frame = (s.frame + 1) % len(spinnerFrames)
@@ -44,8 +58,11 @@ func (s *spinner) update(msg spinnerTickMsg) tea.Cmd {
 }
 
 func (s *spinner) next() tea.Cmd {
-	run := s.run
-	return s.tick(spinnerInterval, func(time.Time) tea.Msg { return spinnerTickMsg{run: run} })
+	id, run := s.id, s.run
+	return s.tick(spinnerInterval, func(time.Time) tea.Msg { return spinnerTickMsg{id: id, run: run} })
 }
 
-func (s *spinner) view() string { return promptStyle.Render(spinnerFrames[s.frame]) }
+func (s *spinner) view() string { return promptStyle.Render(s.glyph()) }
+
+// glyph is the current frame without color.
+func (s *spinner) glyph() string { return spinnerFrames[s.frame] }

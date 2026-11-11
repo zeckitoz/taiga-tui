@@ -20,7 +20,11 @@ type Kanban struct {
 	project  domain.Project
 	me       int64
 	statuses []domain.Status // active (non-archived) Statuses in Taiga order
+	// stories are the User Stories as last loaded or saved; byStatus groups
+	// them by the Status they show, which is the one being saved if any.
+	stories  []domain.UserStory
 	byStatus map[int64][]domain.UserStory
+	saves    saves
 	tab      int
 	// cursor remembers the selected User Story ID per Status ID.
 	cursor map[int64]int64
@@ -62,6 +66,8 @@ type Row struct {
 	Mine     bool
 	Tasks    domain.TaskProgress
 	Selected bool
+	// Saving tells that a Status Change of the User Story is being saved.
+	Saving bool
 }
 
 // Assignee is an Assignee as shown in a row or the detail view.
@@ -125,14 +131,22 @@ func (k Kanban) UserStoriesLoaded(load LoadKanban, stories []domain.UserStory) (
 // User Story if it is still in that tab. Descriptions count as outdated:
 // they stay visible until LoadDetail has loaded them again.
 func (k Kanban) Reload(stories []domain.UserStory) Kanban {
-	k.cursor = maps.Clone(k.cursor) // never share the map with the receiver
 	k.descriptions = k.descriptions.reloaded()
 	return k.withStories(stories)
 }
 
 func (k Kanban) withStories(stories []domain.UserStory) Kanban {
+	k.stories = stories
+	return k.regrouped()
+}
+
+// regrouped groups the User Stories by the Status they show and forgets the
+// selection of a Status whose selected User Story left it.
+func (k Kanban) regrouped() Kanban {
+	k.cursor = maps.Clone(k.cursor) // never share the map with the receiver
 	k.byStatus = map[int64][]domain.UserStory{}
-	for _, s := range stories {
+	for _, s := range k.stories {
+		s.Status = k.saves.status(UserStoryItem, s.ID, s.Status)
 		k.byStatus[s.Status] = append(k.byStatus[s.Status], s)
 	}
 	for id, list := range k.byStatus {
@@ -192,6 +206,7 @@ func (k Kanban) Rows() []Row {
 			Mine:      s.AssignedTo(k.me),
 			Tasks:     s.Tasks,
 			Selected:  i == sel,
+			Saving:    k.saves.saving(UserStoryItem, s.ID),
 		}
 	}
 	return rows
@@ -222,10 +237,101 @@ func (k Kanban) moveCursor(d int) Kanban {
 		return k
 	}
 	i := max(0, min(len(list)-1, k.SelectedIndex()+d))
+	return k.withCursor(k.statuses[k.tab].ID, list[i].ID)
+}
+
+// withCursor selects the User Story with the given ID in the Status with
+// the given ID.
+func (k Kanban) withCursor(statusID, storyID int64) Kanban {
 	k.cursor = maps.Clone(k.cursor) // never share the map with the receiver
-	k.cursor[k.statuses[k.tab].ID] = list[i].ID
+	if k.cursor == nil {
+		k.cursor = map[int64]int64{}
+	}
+	k.cursor[statusID] = storyID
 	return k
 }
+
+// follow activates the tab of the Status with the given ID and selects the
+// User Story with the given ID there.
+func (k Kanban) follow(storyID, statusID int64) Kanban {
+	i := slices.IndexFunc(k.statuses, func(s domain.Status) bool { return s.ID == statusID })
+	if i < 0 {
+		return k
+	}
+	k.tab = i
+	return k.withCursor(statusID, storyID)
+}
+
+// selected returns the selected User Story, or false if the active tab is
+// empty.
+func (k Kanban) selected() (domain.UserStory, bool) {
+	i := k.SelectedIndex()
+	if i < 0 {
+		return domain.UserStory{}, false
+	}
+	return k.active()[i], true
+}
+
+// ChangeStatus moves the selected User Story to the next (dir 1) or
+// previous (dir -1) active Status right away, with the cursor following it
+// into its new tab, and returns the effect of saving the change. It returns
+// a Rejection instead if the change cannot be made, and neither if no User
+// Story is selected.
+func (k Kanban) ChangeStatus(dir int) (Kanban, Effect, error) {
+	s, ok := k.selected()
+	if !ok || !k.loaded {
+		return k, nil, nil
+	}
+	sv, save, err := k.saves.changeStatus(k.project, UserStoryItem, s.ID, s.Ref, s.Status, s.Version, dir)
+	if err != nil {
+		return k, nil, err
+	}
+	k.saves = sv
+	return k.regrouped().follow(s.ID, save.Status), save, nil
+}
+
+// StatusSaved takes the User Story as Taiga saved it from the result of
+// save, or returns false if the result no longer counts.
+func (k Kanban) StatusSaved(save SaveStatus, saved domain.UserStory) (Kanban, bool) {
+	var ok bool
+	if k.saves, ok = k.saves.end(save); !ok {
+		return k, false
+	}
+	if i := slices.IndexFunc(k.stories, func(s domain.UserStory) bool { return s.ID == saved.ID }); i >= 0 {
+		k.stories = slices.Clone(k.stories) // never share the list with the receiver
+		k.stories[i] = saved
+	}
+	return k.regrouped(), true
+}
+
+// StatusNotSaved undoes the change of save, with the cursor following the
+// User Story back if it is selected, and returns the effect of reloading
+// the board if the failure asks for it. It returns false if the result no
+// longer counts.
+func (k Kanban) StatusNotSaved(save SaveStatus, f SaveFailure) (Kanban, Effect, bool) {
+	var ok bool
+	if k.saves, ok = k.saves.end(save); !ok {
+		return k, nil, false
+	}
+	sel, ok := k.selected()
+	k = k.regrouped()
+	if ok && sel.ID == save.ID {
+		if i := slices.IndexFunc(k.stories, func(s domain.UserStory) bool { return s.ID == save.ID }); i >= 0 {
+			k = k.follow(save.ID, k.stories[i].Status)
+		}
+	}
+	return k, reloadOn(f), true
+}
+
+// DropSaves forgets the Status Changes being saved, e.g. when the Team
+// Member leaves the board. Their results no longer count.
+func (k Kanban) DropSaves() Kanban {
+	k.saves = k.saves.dropped()
+	return k.regrouped()
+}
+
+// Saving reports whether any Status Change is being saved.
+func (k Kanban) Saving() bool { return k.saves.any() }
 
 func (k Kanban) active() []domain.UserStory {
 	if len(k.statuses) == 0 {

@@ -33,6 +33,14 @@ type Project struct {
 	UserStoryStatuses []Status
 	TaskStatuses      []Status
 	Members           []TeamMember
+	// Permissions are those of the logged-in Team Member.
+	Permissions Permissions
+}
+
+// Permissions tell what the logged-in Team Member may do in a project.
+type Permissions struct {
+	ModifyTask      bool
+	ModifyUserStory bool
 }
 
 // Member returns the Team Member with the given ID.
@@ -114,4 +122,14 @@ type Task struct {
 type SprintContent struct {
 	UserStories []UserStory
 	Tasks       []Task
+}
+
+// TaskPatch is a change to a Task: its new Status.
+type TaskPatch struct {
+	Status int64
+}
+
+// UserStoryPatch is a change to a User Story: its new Status.
+type UserStoryPatch struct {
+	Status int64
 }

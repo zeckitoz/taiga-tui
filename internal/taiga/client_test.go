@@ -3,6 +3,7 @@ package taiga_test
 import (
 	"context"
 	"errors"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -152,6 +153,7 @@ func TestProjectLoadsBySlugWithStatusesAndMembers(t *testing.T) {
 			{ID: 368, Username: "member-3", FullName: "Member 3"},
 			{ID: 386, Username: "member-4", FullName: "Member 4"},
 		},
+		Permissions: domain.Permissions{ModifyTask: true, ModifyUserStory: true},
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("got  %+v\nwant %+v", got, want)
@@ -563,3 +565,96 @@ func TestClientPassesTokenSourceFailureOn(t *testing.T) {
 type failingToken struct{}
 
 func (failingToken) Token(context.Context) (string, error) { return "", taiga.ErrSessionExpired }
+
+func TestProjectWithoutModifyPermissions(t *testing.T) {
+	srv := newInlineServer(t, `{"id": 1, "my_permissions": ["view_us", "view_tasks"]}`)
+
+	got, err := taiga.NewClient(srv.URL, staticToken("t")).Project(t.Context(), "p")
+
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Permissions != (domain.Permissions{}) {
+		t.Errorf("permissions %+v", got.Permissions)
+	}
+}
+
+// patchServer answers a PATCH of path with the fixture file and records the
+// method, content type and body of the request.
+type patchServer struct {
+	*httptest.Server
+	method, contentType, body string
+}
+
+func newPatchServer(t *testing.T, path, fixture string) *patchServer {
+	t.Helper()
+	data, err := os.ReadFile(filepath.Join("testdata", fixture))
+	if err != nil {
+		t.Fatal(err)
+	}
+	ps := &patchServer{}
+	ps.Server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != path {
+			t.Errorf("unexpected request %s %s", r.Method, r.URL)
+		}
+		body, _ := io.ReadAll(r.Body)
+		ps.method, ps.contentType, ps.body = r.Method, r.Header.Get("Content-Type"), string(body)
+		_, _ = w.Write(data)
+	}))
+	t.Cleanup(ps.Close)
+	return ps
+}
+
+func TestPatchTaskSendsOnlyStatusAndVersion(t *testing.T) {
+	srv := newPatchServer(t, "/api/v1/tasks/9891", "task.json")
+
+	got, err := taiga.NewClient(srv.URL, staticToken("t")).PatchTask(t.Context(), 9891, 0, domain.TaskPatch{Status: 2452})
+
+	if err != nil {
+		t.Fatal(err)
+	}
+	if srv.method != http.MethodPatch || srv.contentType != "application/json" {
+		t.Errorf("%s with %q", srv.method, srv.contentType)
+	}
+	if srv.body != `{"status":2452,"version":0}` {
+		t.Errorf("body %s", srv.body)
+	}
+	if got.ID != 9891 || got.Status != 2452 || got.Version != 1 {
+		t.Errorf("got %+v", got)
+	}
+}
+
+func TestPatchUserStorySendsOnlyStatusAndVersion(t *testing.T) {
+	srv := newPatchServer(t, "/api/v1/userstories/10213", "userstory.json")
+
+	got, err := taiga.NewClient(srv.URL, staticToken("t")).PatchUserStory(t.Context(), 10213, 7, domain.UserStoryPatch{Status: 2951})
+
+	if err != nil {
+		t.Fatal(err)
+	}
+	if srv.method != http.MethodPatch || srv.contentType != "application/json" {
+		t.Errorf("%s with %q", srv.method, srv.contentType)
+	}
+	if srv.body != `{"status":2951,"version":7}` {
+		t.Errorf("body %s", srv.body)
+	}
+	if got.ID != 10213 || got.Status != 2951 || got.Version != 8 {
+		t.Errorf("got %+v", got)
+	}
+}
+
+func TestPatchReportsVersionConflict(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusBadRequest)
+		_, _ = w.Write([]byte(`{"version": "The version doesn't match with the current one"}`))
+	}))
+	defer srv.Close()
+	c := taiga.NewClient(srv.URL, staticToken("t"))
+
+	_, terr := c.PatchTask(t.Context(), 1, 3, domain.TaskPatch{Status: 2})
+	_, uerr := c.PatchUserStory(t.Context(), 1, 3, domain.UserStoryPatch{Status: 2})
+
+	if !errors.Is(terr, taiga.ErrConflict) || !errors.Is(uerr, taiga.ErrConflict) {
+		t.Errorf("got %v and %v, want ErrConflict", terr, uerr)
+	}
+}
