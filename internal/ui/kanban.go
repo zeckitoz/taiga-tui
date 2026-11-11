@@ -21,7 +21,15 @@ const (
 	maxProgressBar   = 10
 )
 
-const kanbanKeys = "←/→ status · ↑/↓ move · enter detail · r refresh · q quit"
+// kanbanKeys returns the footer of the Kanban Board, offering the Taskboard
+// if the project has it.
+func kanbanKeys(taskboard bool) []string {
+	keys := []string{"←/→ status", "↑/↓ move", "enter detail", "r refresh"}
+	if taskboard {
+		keys = append(keys, "b taskboard")
+	}
+	return append(keys, "q quit")
+}
 
 // Placement of the detail view: right of the list from detailRightFrom
 // columns, otherwise below it, never over it.
@@ -34,18 +42,18 @@ const (
 	minListHeight = 3
 )
 
-// kanbanLayout splits the area below the tab bar into the list and the
+// boardLayout splits the area of a board's list into the list and the
 // detail view.
-type kanbanLayout struct {
+type boardLayout struct {
 	listW, listH     int
 	detailW, detailH int
 	// right places the detail view right of the list, else below it.
 	right bool
 }
 
-// layoutKanban lays out a w×h area below the tab bar.
-func layoutKanban(w, h int, detail bool) kanbanLayout {
-	l := kanbanLayout{listW: w, listH: h}
+// layoutBoard lays out the w×h area of a board's list.
+func layoutBoard(w, h int, detail bool) boardLayout {
+	l := boardLayout{listW: w, listH: h}
 	switch {
 	case !detail:
 	case w >= detailRightFrom:
@@ -70,22 +78,31 @@ func renderKanban(k board.Kanban, top, w, h int, detail bool) string {
 		body := centered(w, h-kanbanChromeLines, faintStyle.Render("No user stories on the Kanban Board"), "", faintStyle.Render("r refresh"))
 		return strings.Join(append(head, body), "\n")
 	}
-	l := layoutKanban(w, h-kanbanChromeLines, detail)
+	l := layoutBoard(w, h-kanbanChromeLines, detail)
 	var list string
 	if rows := k.Rows(); len(rows) == 0 {
 		list = centered(l.listW, l.listH, faintStyle.Render("No user stories in "+plainText(k.ActiveStatus().Name)))
 	} else {
 		list = storyList(rows, top, l.listW, l.listH)
 	}
+	return strings.Join(append(head, withDetail(l, w, list, func(inner int, compact bool) []string {
+		return kanbanDetailLines(k, inner, compact)
+	})), "\n")
+}
+
+// withDetail places the detail view next to or below list as laid out by
+// l in an area w cells wide. lines renders the detail view's lines for
+// width inner.
+func withDetail(l boardLayout, w int, list string, lines func(inner int, compact bool) []string) string {
 	if l.detailH == 0 {
-		return strings.Join(append(head, list), "\n")
+		return list
 	}
-	pane := renderDetail(k, l.detailW, l.detailH, !l.right)
+	pane := detailPane(lines(l.detailW-2, !l.right), l.detailW, l.detailH)
 	if l.right {
 		rule := faintStyle.Render(strings.TrimSuffix(strings.Repeat("│\n", l.detailH), "\n"))
-		return strings.Join(append(head, lipgloss.JoinHorizontal(lipgloss.Top, list, rule, pane)), "\n")
+		return lipgloss.JoinHorizontal(lipgloss.Top, list, rule, pane)
 	}
-	return strings.Join(append(head, list, rule(w), pane), "\n")
+	return strings.Join([]string{list, rule(w), pane}, "\n")
 }
 
 // rule is a horizontal line across w cells.

@@ -18,47 +18,68 @@ const (
 	pickerQuit
 )
 
-// pickerChromeLines are the lines above the project list: hint, filter and a
-// blank line.
+// pickerChromeLines are the lines above the list: hint, filter and a blank
+// line.
 const pickerChromeLines = 3
 
+// pickerKeys is the footer of a picker whose esc ends the app.
 const pickerKeys = "type to filter · ↑/↓ move · enter open · esc quit"
 
-// picker is the project picker: projects sorted by name and filterable by
-// name. Projects without boards are greyed out and cannot be chosen.
-type picker struct {
-	projects []domain.ProjectSummary
-	filter   textinput.Model
-	selected int64 // ID of the selected project, 0 if none
-	top      int
-	hint     string
+// pickerItem is one entry of a picker.
+type pickerItem struct {
+	id   int64
+	name string
+	// note follows the name, e.g. why the item is disabled.
+	note string
+	// disabled items are greyed out and cannot be chosen.
+	disabled bool
 }
 
-func newPicker(projects []domain.ProjectSummary, hint string) picker {
-	p := picker{projects: sortedProjects(projects), filter: newField(), hint: hint}
+// picker is a list of items, filterable by name, of which the Team Member
+// chooses one.
+type picker struct {
+	items    []pickerItem
+	filter   textinput.Model
+	selected int64 // ID of the selected item, 0 if none
+	top      int
+	hint     string
+	// noun names an item in "No <noun> matches".
+	noun string
+}
+
+func newPicker(items []pickerItem, noun, hint string) picker {
+	p := picker{items: items, filter: newField(), hint: hint, noun: noun}
 	p.filter.Prompt = "❯ "
-	p.filter.Placeholder = "Filter projects"
+	p.filter.Placeholder = "Filter " + noun + "s"
 	p.filter.Focus()
 	p.selectFirst()
 	return p
 }
 
-// sortedProjects sorts alphabetically, ignoring case.
-func sortedProjects(ps []domain.ProjectSummary) []domain.ProjectSummary {
+// projectItems lists the projects alphabetically, ignoring case. Projects
+// without boards are disabled.
+func projectItems(ps []domain.ProjectSummary) []pickerItem {
 	ps = slices.Clone(ps)
 	slices.SortStableFunc(ps, func(a, b domain.ProjectSummary) int {
 		return strings.Compare(strings.ToLower(a.Name), strings.ToLower(b.Name))
 	})
-	return ps
+	items := make([]pickerItem, len(ps))
+	for i, p := range ps {
+		items[i] = pickerItem{id: p.ID, name: p.Name}
+		if !p.HasBoards() {
+			items[i].note, items[i].disabled = "(no boards enabled)", true
+		}
+	}
+	return items
 }
 
-// visible returns the projects matching the filter.
-func (p *picker) visible() []domain.ProjectSummary {
+// visible returns the items matching the filter.
+func (p *picker) visible() []pickerItem {
 	q := strings.ToLower(strings.TrimSpace(p.filter.Value()))
-	var out []domain.ProjectSummary
-	for _, pr := range p.projects {
-		if strings.Contains(strings.ToLower(pr.Name), q) {
-			out = append(out, pr)
+	var out []pickerItem
+	for _, it := range p.items {
+		if strings.Contains(strings.ToLower(it.name), q) {
+			out = append(out, it)
 		}
 	}
 	return out
@@ -66,40 +87,48 @@ func (p *picker) visible() []domain.ProjectSummary {
 
 func (p *picker) selectFirst() {
 	p.selected = 0
-	for _, pr := range p.visible() {
-		if pr.HasBoards() {
-			p.selected = pr.ID
+	for _, it := range p.visible() {
+		if !it.disabled {
+			p.selected = it.id
 			return
 		}
 	}
 }
 
-// selectedIndex returns the visible projects and the index of the selected
-// one among them, -1 if it is filtered out or there is none.
-func (p *picker) selectedIndex() ([]domain.ProjectSummary, int) {
-	vis := p.visible()
-	return vis, slices.IndexFunc(vis, func(pr domain.ProjectSummary) bool { return pr.ID == p.selected })
+// selectItem selects the item with the given ID if it is visible and can
+// be chosen.
+func (p *picker) selectItem(id int64) {
+	if slices.ContainsFunc(p.visible(), func(it pickerItem) bool { return it.id == id && !it.disabled }) {
+		p.selected = id
+	}
 }
 
-// chosen returns the selected project.
-func (p *picker) chosen() (domain.ProjectSummary, bool) {
+// selectedIndex returns the visible items and the index of the selected
+// one among them, -1 if it is filtered out or there is none.
+func (p *picker) selectedIndex() ([]pickerItem, int) {
+	vis := p.visible()
+	return vis, slices.IndexFunc(vis, func(it pickerItem) bool { return it.id == p.selected })
+}
+
+// chosen returns the ID of the selected item.
+func (p *picker) chosen() (int64, bool) {
 	vis, i := p.selectedIndex()
 	if i < 0 {
-		return domain.ProjectSummary{}, false
+		return 0, false
 	}
-	return vis[i], true
+	return vis[i].id, true
 }
 
-// move selects the next selectable project in direction d, skipping greyed
-// out ones, and stays put at the ends.
+// move selects the next selectable item in direction d, skipping disabled
+// ones, and stays put at the ends.
 func (p *picker) move(d int) {
 	vis, i := p.selectedIndex()
 	if i < 0 {
 		return
 	}
 	for j := i + d; j >= 0 && j < len(vis); j += d {
-		if vis[j].HasBoards() {
-			p.selected = vis[j].ID
+		if !vis[j].disabled {
+			p.selected = vis[j].id
 			return
 		}
 	}
@@ -163,17 +192,21 @@ func (p picker) view(w, h int) string {
 	vis := p.visible()
 	listH := h - pickerChromeLines
 	if len(vis) == 0 {
-		lines = append(lines, "   "+faintStyle.Render("No project matches “"+strings.TrimSpace(p.filter.Value())+"”"))
+		lines = append(lines, "   "+faintStyle.Render("No "+p.noun+" matches “"+strings.TrimSpace(p.filter.Value())+"”"))
 	}
 	for i := p.top; i < len(vis) && i-p.top < listH; i++ {
-		pr := vis[i]
+		it := vis[i]
+		note := ""
+		if it.note != "" {
+			note = "  " + it.note
+		}
 		switch {
-		case pr.ID == p.selected:
-			lines = append(lines, "  "+cursorStyle.Render(fit(" "+pr.Name, w-4)))
-		case !pr.HasBoards():
-			lines = append(lines, "   "+disabledStyle.Render(pr.Name+"  (no boards enabled)"))
+		case it.id == p.selected:
+			lines = append(lines, "  "+cursorStyle.Render(fit(" "+it.name+note, w-4)))
+		case it.disabled:
+			lines = append(lines, "   "+disabledStyle.Render(it.name+note))
 		default:
-			lines = append(lines, "   "+pr.Name)
+			lines = append(lines, "   "+it.name+faintStyle.Render(note))
 		}
 	}
 	for i := range lines {

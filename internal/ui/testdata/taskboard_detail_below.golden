@@ -1,0 +1,30 @@
+ Web Shop › Taskboard › Sprint 4  03.11. - 16.11.2026  current    Alice Example |
+ ▾ #12 Checkout with credit card                                         ▰▱ 1/2 |
+  ▍ #31 Validate card number                     ● In progress  Alice Example   |
+    #32 Redirect to 3-D Secure and back          ● Closed       Bea Koch        |
+                                                                                |
+ ▾ #21 Order history                                                    ▰▰▰ 3/3 |
+  ▍ #35 List past orders                         ● Closed       Alice Example   |
+    #36 Order detail page with invoice downloa…  ● Closed       Carla de la Mar |
+  ▍ #37 Reorder button                           ● Closed       Alice Example   |
+                                                                                |
+ ▾ #15 Product search                                                           |
+    No tasks                                                                    |
+                                                                                |
+ ▾ Tasks without user story                                               ▱ 0/1 |
+    #40 Update privacy policy                    ● New          --              |
+                                                                                |
+                                                                                |
+                                                                                |
+                                                                                |
+────────────────────────────────────────────────────────────────────────────────|
+ #31 Validate card number                                                       |
+ Status     ● In progress                                                       |
+ Assignee   Alice Example (you)                                                 |
+ User Story #12 Checkout with credit card                                       |
+                                                                                |
+ Run the Luhn check before the form is sent.                                    |
+                                                                                |
+ Show the error next to the field.                                              |
+                                                                                |
+ ↑/↓ move · ←/→ fold · enter detail · : sprint · r refresh · b kanban · q quit  |

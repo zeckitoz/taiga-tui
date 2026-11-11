@@ -351,6 +351,7 @@ func newHarness(t *testing.T, sess *fakeSession, st config.State) *harness {
 			State:        state,
 			InitialState: st,
 			Tick:         noTick,
+			Now:          func() time.Time { return today },
 		}),
 	}
 }

@@ -34,6 +34,9 @@ type Taiga interface {
 	Project(ctx context.Context, slug string) (domain.Project, error)
 	Kanban(ctx context.Context, projectID int64) ([]domain.UserStory, error)
 	UserStory(ctx context.Context, id int64) (domain.UserStory, error)
+	Sprints(ctx context.Context, projectID int64) ([]domain.Sprint, error)
+	Taskboard(ctx context.Context, sprintID int64) (domain.SprintContent, error)
+	Task(ctx context.Context, id int64) (domain.Task, error)
 }
 
 // StateStore persists state.json.
@@ -53,6 +56,9 @@ type Deps struct {
 	Warnings []config.Warning
 	// Tick replaces tea.Tick in tests.
 	Tick TickFunc
+	// Now tells the time, whose date in its location decides the Current
+	// Sprint. It replaces time.Now in tests.
+	Now func() time.Time
 }
 
 type screen int
@@ -63,6 +69,7 @@ const (
 	screenLoading
 	screenFailed
 	screenPicker
+	screenSprintPicker
 	screenBoard
 )
 
@@ -113,6 +120,22 @@ type (
 		story     domain.UserStory
 		err       error
 	}
+	sprintsLoadedMsg struct {
+		projectID int64
+		sprints   []domain.Sprint
+		err       error
+	}
+	taskboardLoadedMsg struct {
+		projectID, sprintID int64
+		content             domain.SprintContent
+		err                 error
+	}
+	taskLoadedMsg struct {
+		projectID, sprintID int64
+		load                board.LoadTask
+		task                domain.Task
+		err                 error
+	}
 )
 
 // statusMsg is one entry of the status line.
@@ -147,10 +170,27 @@ type App struct {
 	// picked is set when the Team Member chose project in the picker
 	// rather than it being opened at startup.
 	picked bool
+	// board is the board of project on screenBoard.
+	board  config.Board
 	kanban board.Kanban
 	// hasKanban is set once the Kanban Board of project is loaded.
 	hasKanban bool
 	kanbanTop int
+
+	// sprints are the Sprints of project once hasSprints is set.
+	sprints    []domain.Sprint
+	hasSprints bool
+	// sprint is the Sprint whose Taskboard is shown or loading.
+	sprint    domain.Sprint
+	taskboard board.Taskboard
+	// hasTaskboard is set once the Taskboard of a Sprint of project is
+	// loaded, not necessarily of sprint.
+	hasTaskboard bool
+	taskboardTop int
+	sprintPicker picker
+	// sprintPickerBack makes esc in the Sprint picker go back to the
+	// Taskboard instead of ending the app.
+	sprintPickerBack bool
 	// detailOpen shows the detail view, which is open by default. It is UI
 	// state only and never persisted.
 	detailOpen bool
@@ -160,6 +200,9 @@ type App struct {
 func New(d Deps) App {
 	if d.Tick == nil {
 		d.Tick = tea.Tick
+	}
+	if d.Now == nil {
+		d.Now = time.Now
 	}
 	a := App{deps: d, state: d.InitialState, spinner: spinner{tick: d.Tick}, detailOpen: true}
 	a.me = domain.TeamMember{ID: a.state.UserID, Username: a.state.Username, FullName: a.state.FullName}
@@ -186,7 +229,9 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		a.form.setWidth(msg.Width)
 		a.picker.setWidth(msg.Width)
 		a.picker.scroll(a.pickerListHeight())
-		a.scrollKanban()
+		a.sprintPicker.setWidth(msg.Width)
+		a.sprintPicker.scroll(a.pickerListHeight())
+		a.scrollBoard()
 		return a, nil
 	case tea.KeyPressMsg:
 		if msg.String() == "ctrl+c" {
@@ -256,6 +301,21 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			a.kanban = a.kanban.UserStoryLoaded(msg.load, msg.story)
 		}
 		return a, nil
+	case sprintsLoadedMsg:
+		return a.sprintsLoaded(msg)
+	case taskboardLoadedMsg:
+		return a.taskboardLoaded(msg)
+	case taskLoadedMsg:
+		if msg.projectID != a.project.ID || msg.sprintID != a.taskboard.Sprint().ID {
+			return a, nil // a load of a Sprint that is no longer open
+		}
+		// The board drops results of loads before its last reload.
+		if msg.err != nil {
+			a.taskboard = a.taskboard.TaskFailed(msg.load, msg.err)
+		} else {
+			a.taskboard = a.taskboard.TaskLoaded(msg.load, msg.task)
+		}
+		return a, nil
 	}
 
 	switch a.screen {
@@ -276,6 +336,8 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 	case screenPicker:
 		return a.clearTransient(msg).updatePicker(msg)
+	case screenSprintPicker:
+		return a.clearTransient(msg).updateSprintPicker(msg)
 	case screenBoard:
 		return a.clearTransient(msg).updateBoard(msg)
 	}
@@ -407,7 +469,7 @@ func (a App) projectsLoaded(projects []domain.ProjectSummary) (App, tea.Cmd) {
 
 func (a App) showPicker(hint string) App {
 	a.screen = screenPicker
-	a.picker = newPicker(a.projects, hint)
+	a.picker = newPicker(projectItems(a.projects), "project", hint)
 	a.picker.setWidth(a.width)
 	a.picker.scroll(a.pickerListHeight())
 	return a
@@ -428,6 +490,7 @@ func (a App) openProject(p domain.ProjectSummary, picked bool) (App, tea.Cmd) {
 	a.project = domain.Project{ProjectSummary: p}
 	a.picked = picked
 	a.hasKanban = false
+	a.sprints, a.hasSprints, a.hasTaskboard = nil, false, false
 	return a.loadProject(p.Slug)
 }
 
@@ -445,14 +508,186 @@ func (a App) projectLoaded(p domain.Project) (App, tea.Cmd) {
 		a.state.DefaultProject = p.ID
 		a = a.saveState()
 	}
-	if !p.KanbanEnabled {
-		// The Taskboard comes with a later ticket; until then the board
-		// screen explains why there is nothing to show.
-		a.spinner.stop()
-		a.screen = screenBoard
-		return a, nil
+	return a.openBoard(a.boardFor(p))
+}
+
+// boardFor returns the board to open in p: the last used board at start,
+// the Kanban Board for a project chosen in the picker, either only if p has
+// it enabled, and otherwise the other board.
+func (a App) boardFor(p domain.Project) config.Board {
+	b := a.state.LastBoard
+	if a.picked || b == "" {
+		b = config.BoardKanban
 	}
-	return a.loadKanban()
+	switch {
+	case b == config.BoardKanban && !p.KanbanEnabled:
+		return config.BoardTaskboard
+	case b == config.BoardTaskboard && !p.BacklogEnabled:
+		return config.BoardKanban
+	}
+	return b
+}
+
+// openBoard shows the board b of the project and remembers it as the last
+// used board. A board loaded before stays visible while it refreshes.
+func (a App) openBoard(b config.Board) (App, tea.Cmd) {
+	a.board = b
+	if a.state.LastBoard != b {
+		a.state.LastBoard = b
+		a = a.saveState()
+	}
+	if b == config.BoardKanban {
+		return a.loadKanban()
+	}
+	if a.hasTaskboard {
+		a.screen = screenBoard
+		a.scrollBoard()
+		return a.loadTaskboard(a.sprint)
+	}
+	return a.loadSprints()
+}
+
+func (a App) loadSprints() (App, tea.Cmd) {
+	api, id := a.deps.Taiga, a.project.ID
+	load := func() tea.Msg {
+		sprints, err := api.Sprints(context.Background(), id)
+		return sprintsLoadedMsg{projectID: id, sprints: sprints, err: err}
+	}
+	if a.hasSprints {
+		// A refresh keeps the board visible.
+		return a, load
+	}
+	return a.startLoading("Loading "+a.project.Name+"…", load)
+}
+
+// sprintsLoaded opens the Current Sprint, lets the Team Member choose one,
+// or shows that the project has no Sprints.
+func (a App) sprintsLoaded(msg sprintsLoadedMsg) (tea.Model, tea.Cmd) {
+	if msg.projectID != a.project.ID {
+		return a, nil // a load of a project that is no longer open
+	}
+	if msg.err != nil {
+		if a.hasSprints && !errors.Is(msg.err, taiga.ErrSessionExpired) {
+			return a.refreshFailed(msg.err), nil
+		}
+		return a.failed(msg.err, "Couldn't load Taskboard", App.loadSprints)
+	}
+	a = a.withoutTransient()
+	a.spinner.stop()
+	a.sprints, a.hasSprints = msg.sprints, true
+	remembered, ok := a.state.Sprints[a.project.ID]
+	if ok && !slices.ContainsFunc(a.sprints, func(s domain.Sprint) bool { return s.ID == remembered }) {
+		a.state = a.state.WithoutSprint(a.project.ID)
+		a = a.saveState()
+	}
+	today := a.today()
+	res := domain.ResolveCurrentSprint(a.sprints, today, a.state.Sprints[a.project.ID])
+	switch res.Kind {
+	case domain.One:
+		return a.loadTaskboard(res.Sprint)
+	case domain.Choose:
+		return a.showSprintPicker(res.Choices, chooseHint(a.sprints, today), false), nil
+	}
+	a.hasTaskboard = false
+	a.screen = screenBoard
+	return a, nil
+}
+
+// chooseHint tells why the Team Member has to choose a Sprint.
+func chooseHint(sprints []domain.Sprint, today domain.Date) string {
+	switch {
+	case slices.ContainsFunc(sprints, func(s domain.Sprint) bool { return s.Contains(today) }):
+		return "Several sprints contain today"
+	case slices.ContainsFunc(sprints, func(s domain.Sprint) bool { return !s.Closed }):
+		return "No sprint contains today"
+	}
+	return "No sprint is open"
+}
+
+func (a App) today() domain.Date { return domain.DateOf(a.deps.Now()) }
+
+// showSprintPicker lets the Team Member choose one of sprints. back makes esc
+// return to the Taskboard.
+func (a App) showSprintPicker(sprints []domain.Sprint, hint string, back bool) App {
+	a.screen = screenSprintPicker
+	a.sprintPicker = newPicker(sprintItems(sprints, a.today()), "sprint", hint)
+	a.sprintPicker.setWidth(a.width)
+	a.sprintPicker.scroll(a.pickerListHeight())
+	a.sprintPickerBack = back
+	return a
+}
+
+func (a App) updateSprintPicker(msg tea.Msg) (tea.Model, tea.Cmd) {
+	action, cmd := a.sprintPicker.update(msg, a.pickerListHeight())
+	switch action {
+	case pickerQuit:
+		if a.sprintPickerBack {
+			a.screen = screenBoard
+			return a, nil
+		}
+		return a, tea.Quit
+	case pickerChoose:
+		id, _ := a.sprintPicker.chosen()
+		i := slices.IndexFunc(a.sprints, func(s domain.Sprint) bool { return s.ID == id })
+		if i < 0 {
+			return a, nil
+		}
+		a.state = a.state.WithSprint(a.project.ID, id)
+		a = a.saveState()
+		return a.loadTaskboard(a.sprints[i])
+	}
+	return a, cmd
+}
+
+// loadTaskboard loads the Taskboard of s. Refreshing the Taskboard shown
+// keeps it visible.
+func (a App) loadTaskboard(s domain.Sprint) (App, tea.Cmd) {
+	refresh := a.hasTaskboard && a.taskboard.Sprint().ID == s.ID
+	a.sprint = s
+	api, projectID := a.deps.Taiga, a.project.ID
+	load := func() tea.Msg {
+		c, err := api.Taskboard(context.Background(), s.ID)
+		return taskboardLoadedMsg{projectID: projectID, sprintID: s.ID, content: c, err: err}
+	}
+	if refresh {
+		a.screen = screenBoard
+		return a, load
+	}
+	return a.startLoading("Loading "+s.Name+"…", load)
+}
+
+func (a App) taskboardLoaded(msg taskboardLoadedMsg) (tea.Model, tea.Cmd) {
+	if msg.projectID != a.project.ID || msg.sprintID != a.sprint.ID {
+		return a, nil // a load of a Sprint that is no longer open
+	}
+	refresh := a.hasTaskboard && a.taskboard.Sprint().ID == msg.sprintID
+	if msg.err != nil {
+		if refresh && !errors.Is(msg.err, taiga.ErrSessionExpired) {
+			return a.refreshFailed(msg.err), nil
+		}
+		s := a.sprint
+		return a.failed(msg.err, "Couldn't load Taskboard", func(a App) (App, tea.Cmd) { return a.loadTaskboard(s) })
+	}
+	a = a.withoutTransient()
+	a.spinner.stop()
+	if refresh {
+		a.taskboard = a.taskboard.Reload(msg.content)
+	} else {
+		a.taskboard = board.NewTaskboard(a.project, a.sprint, msg.content, a.me.ID)
+		a.taskboardTop = 0
+		a.hasTaskboard = true
+	}
+	a.screen = screenBoard
+	a.scrollBoard()
+	return a.loadDetail()
+}
+
+// refreshFailed shows why a refresh failed while the board stays usable.
+func (a App) refreshFailed(err error) App {
+	a = a.withoutTransient()
+	a.status = append(a.status, statusMsg{text: "Couldn't refresh: " + reason(err), isErr: true, transient: true})
+	a.scrollBoard() // the status line takes rows from the list
+	return a
 }
 
 func (a App) loadKanban() (App, tea.Cmd) {
@@ -474,10 +709,7 @@ func (a App) kanbanLoaded(msg kanbanLoadedMsg) (tea.Model, tea.Cmd) {
 	}
 	if msg.err != nil {
 		if a.hasKanban && !errors.Is(msg.err, taiga.ErrSessionExpired) {
-			a = a.withoutTransient()
-			a.status = append(a.status, statusMsg{text: "Couldn't refresh: " + reason(msg.err), isErr: true, transient: true})
-			a.scrollKanban() // the status line takes rows from the list
-			return a, nil
+			return a.refreshFailed(msg.err), nil
 		}
 		return a.failed(msg.err, "Couldn't load Kanban Board", App.loadKanban)
 	}
@@ -491,14 +723,20 @@ func (a App) kanbanLoaded(msg kanbanLoadedMsg) (tea.Model, tea.Cmd) {
 		a.hasKanban = true
 	}
 	a.screen = screenBoard
-	a.scrollKanban()
+	a.scrollBoard()
 	return a.loadDetail()
 }
 
-// loadDetail loads the description of the selected User Story if the
-// detail view shows it and it is not loaded yet.
+// loadDetail loads the description of the selected row if the detail view
+// shows it and it is not loaded yet.
 func (a App) loadDetail() (App, tea.Cmd) {
-	if !a.detailOpen || !a.hasKanban {
+	if !a.detailOpen || a.screen != screenBoard {
+		return a, nil
+	}
+	if a.board == config.BoardTaskboard {
+		return a.loadTaskDetail()
+	}
+	if !a.hasKanban {
 		return a, nil
 	}
 	k, load, ok := a.kanban.LoadDetail()
@@ -510,6 +748,22 @@ func (a App) loadDetail() (App, tea.Cmd) {
 	return a, func() tea.Msg {
 		s, err := api.UserStory(context.Background(), load.ID)
 		return userStoryLoadedMsg{projectID: projectID, load: load, story: s, err: err}
+	}
+}
+
+func (a App) loadTaskDetail() (App, tea.Cmd) {
+	if !a.hasTaskboard {
+		return a, nil
+	}
+	tb, load, ok := a.taskboard.LoadDetail()
+	if !ok {
+		return a, nil
+	}
+	a.taskboard = tb
+	api, projectID, sprintID := a.deps.Taiga, a.project.ID, tb.Sprint().ID
+	return a, func() tea.Msg {
+		t, err := api.Task(context.Background(), load.ID)
+		return taskLoadedMsg{projectID: projectID, sprintID: sprintID, load: load, task: t, err: err}
 	}
 }
 
@@ -530,8 +784,8 @@ func (a App) updatePicker(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case pickerQuit:
 		return a, tea.Quit
 	case pickerChoose:
-		p, _ := a.picker.chosen()
-		return a.openProject(p, true)
+		id, _ := a.picker.chosen()
+		return a.openProject(a.projects[indexOfProject(a.projects, id)], true)
 	}
 	return a, cmd
 }
@@ -544,12 +798,17 @@ func (a App) updateBoard(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch key.String() {
 	case "q":
 		return a, tea.Quit
-	case "p":
-		if !a.project.KanbanEnabled {
-			// Until the Taskboard exists, this is the only way out of a
-			// project without a Kanban Board.
-			return a.showPicker(""), nil
+	case "b":
+		// A temporary key until the command palette switches boards.
+		if other := a.otherBoard(); other != "" {
+			return a.openBoard(other)
 		}
+		return a, nil
+	}
+	if a.board == config.BoardTaskboard {
+		return a.updateTaskboard(key)
+	}
+	switch key.String() {
 	case "r":
 		if a.hasKanban {
 			return a.loadKanban()
@@ -565,14 +824,84 @@ func (a App) updateBoard(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case "enter":
 		a.detailOpen = !a.detailOpen
 	}
-	a.scrollKanban()
+	a.scrollBoard()
 	return a.loadDetail()
 }
 
-// scrollKanban keeps the selected User Story visible.
-func (a *App) scrollKanban() {
+// otherBoard returns the board of the project that is not shown, or "" if
+// it is disabled.
+func (a App) otherBoard() config.Board {
+	if a.board == config.BoardKanban && a.project.BacklogEnabled {
+		return config.BoardTaskboard
+	}
+	if a.board == config.BoardTaskboard && a.project.KanbanEnabled {
+		return config.BoardKanban
+	}
+	return ""
+}
+
+func (a App) updateTaskboard(key tea.KeyPressMsg) (tea.Model, tea.Cmd) {
+	if !a.hasTaskboard {
+		// The project has no Sprints. Until the command palette exists,
+		// the project picker is the menu.
+		switch key.String() {
+		case ":":
+			return a.showPicker(""), nil
+		case "r":
+			return a.loadSprints()
+		}
+		return a, nil
+	}
+	switch key.String() {
+	case ":":
+		// A temporary Sprint switcher until the command palette exists.
+		a = a.showSprintPicker(newestFirst(a.sprints), "", true)
+		a.sprintPicker.selectItem(a.taskboard.Sprint().ID)
+		a.sprintPicker.scroll(a.pickerListHeight())
+		return a, nil
+	case "r":
+		return a.loadTaskboard(a.taskboard.Sprint())
+	case "up", "k":
+		a.taskboard = a.taskboard.CursorUp()
+	case "down", "j":
+		a.taskboard = a.taskboard.CursorDown()
+	case "left", "h":
+		a.taskboard = a.taskboard.Left()
+	case "right", "l":
+		a.taskboard = a.taskboard.Right()
+	case "enter":
+		if a.taskboard.TaskSelected() {
+			a.detailOpen = !a.detailOpen
+		} else {
+			a.taskboard = a.taskboard.Toggle()
+		}
+	}
+	a.scrollBoard()
+	return a.loadDetail()
+}
+
+// newestFirst sorts the Sprints by start date, the latest first.
+func newestFirst(sprints []domain.Sprint) []domain.Sprint {
+	sprints = slices.Clone(sprints)
+	slices.SortStableFunc(sprints, func(a, b domain.Sprint) int { return b.Start.Compare(a.Start) })
+	return sprints
+}
+
+// scrollBoard keeps the selected row of the board visible.
+func (a *App) scrollBoard() {
+	if a.board == config.BoardTaskboard {
+		rows := a.taskboard.Rows()
+		lineOf, n := taskboardLines(rows)
+		sel := -1
+		if i := a.taskboard.SelectedIndex(); i >= 0 {
+			sel = lineOf[i]
+		}
+		l := layoutBoard(a.width, a.bodyHeight(), a.detailOpen)
+		a.taskboardTop = scrollTop(a.taskboardTop, sel, n, l.listH)
+		return
+	}
 	n := len(a.kanban.Rows())
-	l := layoutKanban(a.width, a.bodyHeight()-kanbanChromeLines, a.detailOpen)
+	l := layoutBoard(a.width, a.bodyHeight()-kanbanChromeLines, a.detailOpen)
 	a.kanbanTop = scrollTop(a.kanbanTop, a.kanban.SelectedIndex(), n, l.listH)
 }
 
@@ -592,9 +921,15 @@ func (a App) View() tea.View {
 	switch a.screen {
 	case screenPicker:
 		content = a.framed("Select project", a.pickerBody(), a.pickerFooter())
+	case screenSprintPicker:
+		path := projectStyle.Render(a.project.Name) + faintStyle.Render(" › ") + titleStyle.Render("Select sprint")
+		keys := pickerKeys
+		if a.sprintPickerBack {
+			keys = strings.Replace(keys, "esc quit", "esc back", 1)
+		}
+		content = a.framed(path, a.sprintPicker.view(a.width, a.bodyHeight()), footer(keys, a.width))
 	case screenBoard:
-		path := projectStyle.Render(a.project.Name) + faintStyle.Render(" › ") + titleStyle.Render("Kanban Board")
-		content = a.framed(path, a.boardBody(), footer(a.boardKeys(), a.width))
+		content = a.framed(a.boardPath(), a.boardBody(), footerOf(a.boardKeys(), a.width))
 	default:
 		content = a.plain()
 	}
@@ -648,19 +983,46 @@ func (a App) pickerFooter() string {
 	return footer(pickerKeys, a.width)
 }
 
-func (a App) boardBody() string {
-	h := a.bodyHeight()
-	if !a.project.KanbanEnabled {
-		return centered(a.width, h, faintStyle.Render("Kanban is disabled in "+a.project.Name))
+// boardPath is the header of the board screen.
+func (a App) boardPath() string {
+	sep := faintStyle.Render(" › ")
+	path := projectStyle.Render(a.project.Name) + sep
+	if a.board == config.BoardKanban {
+		return path + titleStyle.Render("Kanban Board")
 	}
-	return renderKanban(a.kanban, a.kanbanTop, a.width, h, a.detailOpen)
+	if !a.hasTaskboard {
+		return path + titleStyle.Render("Taskboard")
+	}
+	path += "Taskboard" + sep
+	full := path + sprintPath(a.taskboard.Sprint(), a.today(), true)
+	// Leave out the date range rather than the Team Member's name.
+	if lipgloss.Width(full)+lipgloss.Width(a.me.FullName)+3 <= a.width {
+		return full
+	}
+	return path + sprintPath(a.taskboard.Sprint(), a.today(), false)
 }
 
-func (a App) boardKeys() string {
-	if !a.project.KanbanEnabled {
-		return "p projects · q quit"
+func (a App) boardBody() string {
+	h := a.bodyHeight()
+	if a.board == config.BoardKanban {
+		return renderKanban(a.kanban, a.kanbanTop, a.width, h, a.detailOpen)
 	}
-	return kanbanKeys
+	if !a.hasTaskboard {
+		return centered(a.width, h,
+			faintStyle.Render("No sprints in "+a.project.Name), "",
+			faintStyle.Render(noSprintsKeys))
+	}
+	return renderTaskboard(a.taskboard, a.taskboardTop, a.width, h, a.detailOpen)
+}
+
+func (a App) boardKeys() []string {
+	switch {
+	case a.board == config.BoardKanban:
+		return kanbanKeys(a.project.BacklogEnabled)
+	case !a.hasTaskboard:
+		return []string{": menu", "r refresh", "q quit"}
+	}
+	return taskboardKeys(a.taskboard, a.project.KanbanEnabled)
 }
 
 // statusLines renders the status line, indented by indent cells. Long

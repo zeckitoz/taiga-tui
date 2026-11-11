@@ -15,18 +15,21 @@ import (
 // detailLabelWidth is the width of the field labels, e.g. "Assignees ".
 const detailLabelWidth = 11
 
-// renderDetail renders the read-only detail view of the selected User
-// Story, or of the active Status if its tab is empty, as exactly h lines of
-// w cells with one cell of padding on each side. compact saves lines for the
-// detail view below the list.
-func renderDetail(k board.Kanban, w, h int, compact bool) string {
-	inner := w - 2
-	var lines []string
+// kanbanDetailLines renders the detail view of the selected User Story, or
+// of the active Status if its tab is empty, for width w. compact saves lines
+// for the detail view below the list.
+func kanbanDetailLines(k board.Kanban, w int, compact bool) []string {
 	if d, ok := k.Detail(); ok {
-		lines = storyDetail(d, inner, compact)
-	} else {
-		lines = statusDetail(k.ActiveStatus(), inner)
+		return storyDetail(d, w, compact)
 	}
+	return statusDetail(k.ActiveStatus(), w)
+}
+
+// detailPane renders lines as the read-only detail view: exactly h lines of
+// w cells with one cell of padding on each side, cut off with "…" if they
+// don't fit.
+func detailPane(lines []string, w, h int) string {
+	inner := w - 2
 	if len(lines) > h {
 		lines = lines[:h]
 		for len(lines) > 1 && lines[len(lines)-1] == "" {
@@ -49,24 +52,9 @@ func storyDetail(d board.Detail, w int, compact bool) []string {
 		lines = append(lines, "")
 	}
 
-	status := faintStyle.Render("Unknown status")
-	if d.Status.ID != 0 {
-		status = statusStyle(d.Status.Color).Render("● " + plainText(d.Status.Name))
-	}
-	lines = append(lines, field("Status", status, w)...)
+	lines = append(lines, field("Status", statusLabel(d.Status), w)...)
 
-	who := faintStyle.Render("unassigned")
-	if len(d.Assignees) > 0 {
-		names := make([]string, len(d.Assignees))
-		for i, a := range d.Assignees {
-			names[i] = plainText(a.Name)
-			if a.Mine {
-				names[i] = mineStyle.Render(names[i] + " (you)")
-			}
-		}
-		who = strings.Join(names, ", ")
-	}
-	lines = append(lines, field("Assignees", who, w)...)
+	lines = append(lines, field("Assignees", assigneeNames(d.Assignees), w)...)
 
 	sprint := faintStyle.Render("not in a sprint")
 	if d.SprintName != "" {
@@ -76,6 +64,31 @@ func storyDetail(d board.Detail, w int, compact bool) []string {
 	lines = append(lines, field("Tasks", progress(d.Tasks, true), w)...)
 	lines = append(lines, "")
 	return append(lines, descriptionLines(d.Description, w)...)
+}
+
+// statusLabel names a Status in its color, or "Unknown status" for the zero
+// Status.
+func statusLabel(s domain.Status) string {
+	if s.ID == 0 {
+		return faintStyle.Render("Unknown status")
+	}
+	return statusStyle(s.Color).Render("● " + plainText(s.Name))
+}
+
+// assigneeNames lists the Assignees by name, the logged-in Team Member in
+// the accent color, or "unassigned".
+func assigneeNames(as []board.Assignee) string {
+	if len(as) == 0 {
+		return faintStyle.Render("unassigned")
+	}
+	names := make([]string, len(as))
+	for i, a := range as {
+		names[i] = plainText(a.Name)
+		if a.Mine {
+			names[i] = mineStyle.Render(names[i] + " (you)")
+		}
+	}
+	return strings.Join(names, ", ")
 }
 
 func descriptionLines(d board.Description, w int) []string {

@@ -163,16 +163,6 @@ func TestKanbanLoadFailureShowsErrorPageAndRetries(t *testing.T) {
 	}
 }
 
-func TestProjectWithKanbanDisabledExplainsIt(t *testing.T) {
-	h := resumed(t, newFake(), aliceState(mobileApp.ID))
-
-	h.start()
-
-	if view := h.plainView(); !strings.Contains(view, "Kanban is disabled in mobile app") {
-		t.Errorf("view:\n%s", view)
-	}
-}
-
 func TestKanbanListScrollsToKeepCursorVisible(t *testing.T) {
 	api := newFake()
 	var many []domain.UserStory
@@ -229,16 +219,5 @@ func TestKanbanLoadFailureNamesTheBoard(t *testing.T) {
 
 	if view := h.plainView(); !strings.Contains(view, "Couldn't load Kanban Board: unexpected response from server") {
 		t.Errorf("view:\n%s", view)
-	}
-}
-
-func TestProjectWithoutKanbanOffersWayBackToPicker(t *testing.T) {
-	h := resumed(t, newFake(), aliceState(mobileApp.ID))
-	h.start()
-
-	h.key("p")
-
-	if h.app.screen != screenPicker {
-		t.Errorf("screen %v", h.app.screen)
 	}
 }

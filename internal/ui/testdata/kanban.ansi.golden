@@ -8,5 +8,5 @@
  [1m#15 Product search[m                                                                                 |
  [2mStatus     [m[38;5;60m● New[m                                                                                   |
  [2mAssignees  [m[2munassigned[m                                                                              |
- [2mSprint     [m[2mnot in a sprint[m[2m …[m                                                                       |
- [2m←/→ status · ↑/↓ move · enter detail · r refresh · q quit[m                                          |
+ [2mSprint     [mSprint 4[2m …[m                                                                              |
+ [2m←/→ status · ↑/↓ move · enter detail · r refresh · b taskboard · q quit[m                            |
