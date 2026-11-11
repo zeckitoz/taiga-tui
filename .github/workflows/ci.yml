@@ -2,10 +2,16 @@ name: CI
 
 on:
   push:
+    branches: [main]
   pull_request:
 
 permissions:
   contents: read
+
+defaults:
+  run:
+    # One shell on every runner; PowerShell splits arguments like -coverprofile=coverage.out.
+    shell: bash
 
 jobs:
   test:
