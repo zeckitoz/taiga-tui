@@ -56,16 +56,11 @@ type loginResponse struct {
 // Login logs in with a Taiga username or email address and a password.
 func (a *AuthAPI) Login(ctx context.Context, username, password string) (LoginResult, error) {
 	code, data, err := a.post(ctx, "/auth", loginRequest{Type: "normal", Username: username, Password: password})
+	if err == nil {
+		err = authStatusError(code, ErrInvalidCredentials)
+	}
 	if err != nil {
 		return LoginResult{}, err
-	}
-	switch {
-	case code == http.StatusUnauthorized, code == http.StatusBadRequest:
-		return LoginResult{}, ErrInvalidCredentials
-	case code >= 500:
-		return LoginResult{}, &ServerError{Code: code}
-	case code != http.StatusOK:
-		return LoginResult{}, fmt.Errorf("%w: HTTP %d", ErrUnexpected, code)
 	}
 
 	var lr loginResponse
@@ -99,16 +94,11 @@ type refreshResponse struct {
 // A rejected refresh token yields ErrSessionExpired.
 func (a *AuthAPI) Refresh(ctx context.Context, refresh string) (Tokens, error) {
 	code, data, err := a.post(ctx, "/auth/refresh", refreshRequest{Refresh: refresh})
+	if err == nil {
+		err = authStatusError(code, ErrSessionExpired)
+	}
 	if err != nil {
 		return Tokens{}, err
-	}
-	switch {
-	case code == http.StatusUnauthorized, code == http.StatusBadRequest:
-		return Tokens{}, ErrSessionExpired
-	case code >= 500:
-		return Tokens{}, &ServerError{Code: code}
-	case code != http.StatusOK:
-		return Tokens{}, fmt.Errorf("%w: HTTP %d", ErrUnexpected, code)
 	}
 
 	var rr refreshResponse
@@ -119,6 +109,21 @@ func (a *AuthAPI) Refresh(ctx context.Context, refresh string) (Tokens, error) {
 		return Tokens{}, fmt.Errorf("%w: refresh response lacks tokens", ErrUnexpected)
 	}
 	return Tokens{Access: rr.AuthToken, Refresh: rr.Refresh}, nil
+}
+
+// authStatusError maps the status code of an auth call to a typed error;
+// rejected is the error for a 400 or 401, with which Taiga rejects the
+// credentials or token sent.
+func authStatusError(code int, rejected error) error {
+	switch {
+	case code == http.StatusOK:
+		return nil
+	case code == http.StatusUnauthorized, code == http.StatusBadRequest:
+		return rejected
+	case code >= 500:
+		return &ServerError{Code: code}
+	}
+	return fmt.Errorf("%w: HTTP %d", ErrUnexpected, code)
 }
 
 // post sends body as JSON to the API path and returns the status code and the

@@ -26,11 +26,7 @@ func TestLoginSendsNormalLoginAndReturnsMemberAndTokens(t *testing.T) {
 		if err := json.NewDecoder(r.Body).Decode(&got); err != nil {
 			t.Error(err)
 		}
-		data, err := os.ReadFile(filepath.Join("testdata", "login.json"))
-		if err != nil {
-			t.Error(err)
-		}
-		_, _ = w.Write(data)
+		writeFixture(t, w, "login.json")
 	}))
 	defer srv.Close()
 
@@ -132,11 +128,7 @@ func TestRefreshSendsRefreshTokenAndReturnsRotatedTokens(t *testing.T) {
 		if err := json.NewDecoder(r.Body).Decode(&got); err != nil {
 			t.Error(err)
 		}
-		data, err := os.ReadFile(filepath.Join("testdata", "refresh.json"))
-		if err != nil {
-			t.Error(err)
-		}
-		_, _ = w.Write(data)
+		writeFixture(t, w, "refresh.json")
 	}))
 	defer srv.Close()
 
@@ -202,4 +194,14 @@ func TestRefreshReportsUnreachableHost(t *testing.T) {
 	if !errors.Is(err, taiga.ErrUnreachable) {
 		t.Errorf("got %v, want ErrUnreachable", err)
 	}
+}
+
+// writeFixture answers with the fixture file name from testdata.
+func writeFixture(t *testing.T, w http.ResponseWriter, name string) {
+	t.Helper()
+	data, err := os.ReadFile(filepath.Join("testdata", name))
+	if err != nil {
+		t.Error(err)
+	}
+	_, _ = w.Write(data)
 }

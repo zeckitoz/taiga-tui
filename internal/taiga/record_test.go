@@ -1,10 +1,12 @@
 package taiga_test
 
 import (
+	"cmp"
 	"flag"
 	"fmt"
 	"net/http"
 	"os"
+	"slices"
 	"testing"
 
 	"github.com/zeckitoz/taiga-tui/internal/config"
@@ -68,7 +70,8 @@ func TestRecordFixtures(t *testing.T) {
 		return err
 	})
 
-	if err := rec.Save("testdata", taigarec.Anonymiser{Replace: projectNames(projects, project)}, user, password); err != nil {
+	anon := taigarec.Anonymiser{Replace: projectNames(projects, project)}
+	if err := rec.Save("testdata", anon, user, password, me.Username, me.FullName); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -94,8 +97,12 @@ func mustRecord(t *testing.T, rec *taigarec.Recorder, name string, call func() e
 }
 
 // projectNames hides the names and slugs of the recorded project and of every
-// other project the Team Member belongs to.
+// other project the Team Member belongs to, numbered by project ID so that a
+// new recording keeps the numbers.
 func projectNames(projects []domain.ProjectSummary, recorded domain.Project) map[string]string {
+	projects = slices.SortedFunc(slices.Values(projects), func(a, b domain.ProjectSummary) int {
+		return cmp.Compare(a.ID, b.ID)
+	})
 	replace := map[string]string{}
 	for i, p := range projects {
 		replace[p.Name] = fmt.Sprintf("Project %d", i+1)

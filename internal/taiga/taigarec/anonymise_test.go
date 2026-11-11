@@ -38,7 +38,7 @@ func TestAnonymiseReplacesNamesEmailsTokensAndPhotos(t *testing.T) {
 
 	want := `{
   "auth_token": "redacted-access-token-1",
-  "big_photo": "https://photos.example.invalid/redacted.png",
+  "big_photo": "https://media.example.invalid/redacted.png",
   "bio": "redacted",
   "description": "redacted",
   "description_html": "redacted",
@@ -49,7 +49,7 @@ func TestAnonymiseReplacesNamesEmailsTokensAndPhotos(t *testing.T) {
   "id": 1234,
   "is_active": true,
   "kanban_order": 17000000000000001,
-  "photo": "https://photos.example.invalid/redacted.png",
+  "photo": "https://media.example.invalid/redacted.png",
   "refresh": "redacted-refresh-token-1",
   "username": "member-1",
   "uuid": "redacted"
@@ -86,8 +86,8 @@ func TestAnonymiseUsesOnePseudonymPerPersonAcrossFixturesAndInsideText(t *testin
   },
   {
     "id": 9,
-    "name": "Ask Member 1",
-    "slug": "member-1-misc"
+    "name": "Ask Member 2",
+    "slug": "member-2-misc"
   }
 ]
 `
@@ -95,16 +95,16 @@ func TestAnonymiseUsesOnePseudonymPerPersonAcrossFixturesAndInsideText(t *testin
   "id": 7,
   "members": [
     {
-      "full_name": "Member 1",
-      "full_name_display": "Member 1",
+      "full_name": "Member 2",
+      "full_name_display": "Member 2",
       "id": 2,
-      "username": "member-1"
+      "username": "member-2"
     },
     {
       "full_name": "",
-      "full_name_display": "Member 2",
+      "full_name_display": "Member 1",
       "id": 1,
-      "username": "member-2"
+      "username": "member-1"
     }
   ],
   "name": "Test Project",
@@ -148,5 +148,109 @@ func TestAnonymiseRejectsBodiesThatAreNotJSON(t *testing.T) {
 
 	if err == nil || !strings.Contains(err.Error(), "me.json") {
 		t.Errorf("got %v, want an error naming me.json", err)
+	}
+}
+
+func TestAnonymiseReplacesNamePartsAndAnyCaseInsideText(t *testing.T) {
+	members := taigarec.Fixture{Name: "members.json", Body: []byte(`[
+		{"id": 1, "username": "jdoe", "full_name_display": "Jane Doe"},
+		{"subject": "Ask jane or DOE's JDOE account, not Janet", "jdoe": true}]`)}
+
+	got := anonymise(t, taigarec.Anonymiser{}, members)
+
+	want := `[
+  {
+    "full_name_display": "Member 1",
+    "id": 1,
+    "username": "member-1"
+  },
+  {
+    "member-1": true,
+    "subject": "Ask Member 1 or Member 1's member-1 account, not Janet"
+  }
+]
+`
+	if got["members.json"] != want {
+		t.Errorf("got\n%s\nwant\n%s", got["members.json"], want)
+	}
+}
+
+func TestAnonymiseNumbersTeamMembersByIDNotByOrder(t *testing.T) {
+	// The story names Jane before any object tells her username.
+	stories := taigarec.Fixture{Name: "stories.json", Body: []byte(`[
+		{"assigned_to_extra_info": {"full_name_display": "Jane Doe"}}]`)}
+	members := taigarec.Fixture{Name: "members.json", Body: []byte(`[
+		{"id": 9, "username": "jdoe", "full_name_display": "Jane Doe"},
+		{"id": 3, "username": "mmuster", "full_name_display": "Max Muster"}]`)}
+
+	got := anonymise(t, taigarec.Anonymiser{}, stories, members)
+
+	wantStories := `[
+  {
+    "assigned_to_extra_info": {
+      "full_name_display": "Member 2"
+    }
+  }
+]
+`
+	wantMembers := `[
+  {
+    "full_name_display": "Member 2",
+    "id": 9,
+    "username": "member-2"
+  },
+  {
+    "full_name_display": "Member 1",
+    "id": 3,
+    "username": "member-1"
+  }
+]
+`
+	if got["stories.json"] != wantStories {
+		t.Errorf("stories.json got\n%s\nwant\n%s", got["stories.json"], wantStories)
+	}
+	if got["members.json"] != wantMembers {
+		t.Errorf("members.json got\n%s\nwant\n%s", got["members.json"], wantMembers)
+	}
+}
+
+func TestAnonymiseReplacesUsernamesOnlyAsWholeWords(t *testing.T) {
+	members := taigarec.Fixture{Name: "members.json", Body: []byte(`[
+		{"id": 1, "username": "ab", "full_name_display": ""},
+		{"color": "#AB12CD", "subject": "Label lab", "slug": "ab-web-shop"}]`)}
+
+	got := anonymise(t, taigarec.Anonymiser{}, members)
+
+	want := `[
+  {
+    "full_name_display": "",
+    "id": 1,
+    "username": "member-1"
+  },
+  {
+    "color": "#AB12CD",
+    "slug": "member-1-web-shop",
+    "subject": "Label lab"
+  }
+]
+`
+	if got["members.json"] != want {
+		t.Errorf("got\n%s\nwant\n%s", got["members.json"], want)
+	}
+}
+
+func TestAnonymiseRedactsMediaURLs(t *testing.T) {
+	project := taigarec.Fixture{Name: "project.json", Body: []byte(`{
+		"logo_small_url": "https://taiga.example/media/logo.png?token=abc", "logo_big_url": null}`)}
+
+	got := anonymise(t, taigarec.Anonymiser{}, project)
+
+	want := `{
+  "logo_big_url": null,
+  "logo_small_url": "https://media.example.invalid/redacted.png"
+}
+`
+	if got["project.json"] != want {
+		t.Errorf("got\n%s\nwant\n%s", got["project.json"], want)
 	}
 }

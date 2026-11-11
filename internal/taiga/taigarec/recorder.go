@@ -19,11 +19,11 @@ type Recorder struct {
 	base http.RoundTripper
 
 	mu       sync.Mutex
-	captured []response
+	captured []capturedResponse
 	fixtures []Fixture
 }
 
-type response struct {
+type capturedResponse struct {
 	status int
 	body   []byte
 }
@@ -46,7 +46,7 @@ func (r *Recorder) RoundTrip(req *http.Request) (*http.Response, error) {
 	}
 	resp.Body = io.NopCloser(bytes.NewReader(body))
 	r.mu.Lock()
-	r.captured = append(r.captured, response{status: resp.StatusCode, body: body})
+	r.captured = append(r.captured, capturedResponse{status: resp.StatusCode, body: body})
 	r.mu.Unlock()
 	return resp, nil
 }
@@ -84,10 +84,10 @@ func (r *Recorder) Record(name string, call func() error) error {
 	return nil
 }
 
-// Save anonymises the recorded fixtures with a and writes them to dir. It
+// Save anonymises the recorded fixtures with anon and writes them to dir. It
 // writes nothing if any fixture still contains an email address, a JWT or one
 // of the forbidden strings, such as the password used for recording.
-func (r *Recorder) Save(dir string, a Anonymiser, forbidden ...string) error {
+func (r *Recorder) Save(dir string, anon Anonymiser, forbidden ...string) error {
 	r.mu.Lock()
 	fixtures := r.fixtures
 	r.mu.Unlock()
@@ -95,7 +95,7 @@ func (r *Recorder) Save(dir string, a Anonymiser, forbidden ...string) error {
 		return errors.New("nothing recorded")
 	}
 
-	out, err := a.Anonymise(fixtures)
+	out, err := anon.Anonymise(fixtures)
 	if err != nil {
 		return err
 	}
@@ -119,7 +119,7 @@ func (r *Recorder) Save(dir string, a Anonymiser, forbidden ...string) error {
 	}
 	for _, f := range out {
 		if err := os.WriteFile(filepath.Join(dir, f.Name), f.Body, 0o644); err != nil {
-			return err
+			return fmt.Errorf("%s: %w", f.Name, err)
 		}
 	}
 	return nil
