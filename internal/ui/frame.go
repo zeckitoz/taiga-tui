@@ -39,13 +39,17 @@ func footer(keys string, w int) string {
 	return fit(" "+faintStyle.Render(keys), w)
 }
 
+// footerKept is the number of entries at the end of a footer that are never
+// left out: the menu and the help.
+const footerKept = 2
+
 // footerOf renders the key help line from keys, leaving out whole entries
-// before the last one, which quits, until the line fits.
+// before the last footerKept ones until the line fits.
 func footerOf(keys []string, w int) string {
 	keys = slices.Clone(keys)
 	line := strings.Join(keys, " · ")
-	for len(keys) > 1 && lipgloss.Width(line)+1 > w {
-		keys = slices.Delete(keys, len(keys)-2, len(keys)-1)
+	for len(keys) > footerKept && lipgloss.Width(line)+1 > w {
+		keys = slices.Delete(keys, len(keys)-footerKept-1, len(keys)-footerKept)
 		line = strings.Join(keys, " · ")
 	}
 	return footer(line, w)

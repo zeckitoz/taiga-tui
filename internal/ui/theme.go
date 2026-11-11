@@ -28,6 +28,11 @@ var (
 			Border(lipgloss.RoundedBorder()).
 			BorderForeground(accentColor).
 			Padding(1, 3)
+	// paletteStyle frames the command palette over the board.
+	paletteStyle = lipgloss.NewStyle().
+			Border(lipgloss.RoundedBorder()).
+			BorderForeground(accentColor).
+			Padding(0, 1)
 
 	// mineStyle marks what belongs to the logged-in Team Member.
 	mineStyle     = lipgloss.NewStyle().Bold(true).Foreground(accentColor)

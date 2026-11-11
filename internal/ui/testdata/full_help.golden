@@ -1,0 +1,24 @@
+ Web Shop › Kanban Board                                                              Alice Example |
+ ● New 3 │ ● Ready 0 │ ● In progress 1/3 │ ● Ready for test 0 │ ● Done 1                            |
+────────────────────────────────────────────────────────────────────────────────────────────────────|
+   #15  Product search                                                       --     no tasks        |
+ ▍ #12  Checkout with credit card                                            BK AE  ▰▱ 1/2          |
+   #108 Wishlist for logged-in customers that is shared with friends and f…  CM     ▰▰▰▱▱▱▱▱▱▱ 4/14 |
+                                                                                                    |
+                                                                                                    |
+                                                                                                    |
+                                                                                                    |
+────────────────────────────────────────────────────────────────────────────────────────────────────|
+ #15 Product search                                                                                 |
+ Status     ● New                                                                                   |
+ Assignees  unassigned                                                                              |
+ Sprint     Sprint 4                                                                                |
+ Tasks      no tasks                                                                                |
+                                                                                                    |
+ No description                                                                                     |
+                                                                                                    |
+                                                                                                    |
+ ←/→ h/l   previous / next status             : ctrl+k  menu: boards, sprints, projects             |
+ ↑/↓ j/k   move                               ? esc     close help                                  |
+ enter     show / hide detail                 q ctrl+c  quit                                        |
+ r         refresh                                                                                  |

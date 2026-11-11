@@ -21,15 +21,8 @@ const (
 	maxProgressBar   = 10
 )
 
-// kanbanKeys returns the footer of the Kanban Board, offering the Taskboard
-// if the project has it.
-func kanbanKeys(taskboard bool) []string {
-	keys := []string{"←/→ status", "↑/↓ move", "enter detail", "r refresh"}
-	if taskboard {
-		keys = append(keys, "b taskboard")
-	}
-	return append(keys, "q quit")
-}
+// kanbanKeys is the footer of the Kanban Board.
+var kanbanKeys = []string{"←/→ status", "↑/↓ move", "enter detail", "r refresh", ": menu", "? help"}
 
 // Placement of the detail view: right of the list from detailRightFrom
 // columns, otherwise below it, never over it.
