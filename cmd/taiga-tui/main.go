@@ -67,6 +67,7 @@ func run(args []string, getenv func(string) string, stdout, stderr io.Writer) in
 	err = runTUI(ui.Deps{
 		Host:         host,
 		Session:      sess,
+		Taiga:        taiga.NewClient(cfg.InstanceURL, sess),
 		State:        stateFile,
 		InitialState: state,
 		Warnings:     warnings,

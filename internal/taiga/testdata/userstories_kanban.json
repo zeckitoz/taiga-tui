@@ -1,0 +1,41 @@
+[
+  {
+    "id": 501,
+    "ref": 12,
+    "subject": "Checkout with credit card",
+    "status": 102,
+    "status_extra_info": {"name": "In progress", "color": "#E47C40", "is_closed": false},
+    "swimlane": null,
+    "kanban_order": 1700000000002,
+    "sprint_order": 1,
+    "backlog_order": 3,
+    "milestone": null,
+    "assigned_to": 43,
+    "assigned_users": [42, 43],
+    "is_closed": false,
+    "is_blocked": false,
+    "version": 4,
+    "tasks": [
+      {"id": 901, "ref": 13, "subject": "Form", "status_id": 201, "is_closed": true, "is_blocked": false, "is_iocaine": false},
+      {"id": 902, "ref": 14, "subject": "Payment API", "status_id": 201, "is_closed": false, "is_blocked": false, "is_iocaine": false}
+    ]
+  },
+  {
+    "id": 502,
+    "ref": 15,
+    "subject": "Product search",
+    "status": 101,
+    "status_extra_info": {"name": "New", "color": "#70728F", "is_closed": false},
+    "swimlane": null,
+    "kanban_order": 1700000000001,
+    "sprint_order": 2,
+    "backlog_order": 1,
+    "milestone": null,
+    "assigned_to": null,
+    "assigned_users": [],
+    "is_closed": false,
+    "is_blocked": false,
+    "version": 1,
+    "tasks": null
+  }
+]

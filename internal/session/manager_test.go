@@ -338,3 +338,45 @@ func (c *countingHang) Delete(key string) error {
 	c.calls.Add(1)
 	return c.hangingStore.Delete(key)
 }
+
+func TestTokenHandsOutAccessTokenOfResumedSession(t *testing.T) {
+	kr := newMemStore()
+	access := jwt(now.Add(time.Hour))
+	kr.data[host+"/alice/access"] = access
+	m := newManager(t, &fakeAuth{}, kr, t.TempDir())
+
+	if _, err := m.Token(t.Context()); !errors.Is(err, taiga.ErrSessionExpired) {
+		t.Errorf("before resume: got %v, want ErrSessionExpired", err)
+	}
+	m.Resume("alice")
+	got, err := m.Token(t.Context())
+
+	if err != nil || got != access {
+		t.Errorf("got %q, %v", got, err)
+	}
+}
+
+func TestTokenHandsOutAccessTokenOfSavedLogin(t *testing.T) {
+	m := newManager(t, &fakeAuth{}, newMemStore(), t.TempDir())
+	res := loginResult(now.Add(time.Hour))
+	if _, err := m.Save(res); err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := m.Token(t.Context())
+
+	if err != nil || got != res.Tokens.Access {
+		t.Errorf("got %q, %v", got, err)
+	}
+}
+
+func TestTokenReportsExpiredSession(t *testing.T) {
+	m := newManager(t, &fakeAuth{}, newMemStore(), t.TempDir())
+	if _, err := m.Save(loginResult(now)); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := m.Token(t.Context()); !errors.Is(err, taiga.ErrSessionExpired) {
+		t.Errorf("got %v, want ErrSessionExpired", err)
+	}
+}

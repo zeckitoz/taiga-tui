@@ -21,7 +21,7 @@ func TestStateFileMissingYieldsDefaults(t *testing.T) {
 
 func TestStateFileRoundTrip(t *testing.T) {
 	f := config.NewStateFile(t.TempDir())
-	want := config.State{UserID: 42, Username: "alice", Login: "alice@example.org", FullName: "Alice Example"}
+	want := config.State{UserID: 42, Username: "alice", Login: "alice@example.org", FullName: "Alice Example", DefaultProject: 7}
 
 	if err := f.Save(want); err != nil {
 		t.Fatalf("save: %v", err)
@@ -87,19 +87,19 @@ func TestStateFileCorruptFallsBackToDefaultsWithWarning(t *testing.T) {
 }
 
 func TestStateLoggedInKeepsStateOfSameUser(t *testing.T) {
-	old := config.State{UserID: 42, Username: "alice", Login: "alice", FullName: "Alice"}
+	old := config.State{UserID: 42, Username: "alice", Login: "alice", FullName: "Alice", DefaultProject: 9}
 	m := domain.TeamMember{ID: 42, Username: "alice", FullName: "Alice Example"}
 
 	got := old.LoggedIn(m, "alice@example.org")
 
-	want := config.State{UserID: 42, Username: "alice", Login: "alice@example.org", FullName: "Alice Example"}
+	want := config.State{UserID: 42, Username: "alice", Login: "alice@example.org", FullName: "Alice Example", DefaultProject: 9}
 	if got != want {
 		t.Errorf("got  %+v\nwant %+v", got, want)
 	}
 }
 
 func TestStateLoggedInDiscardsStateOfOtherUser(t *testing.T) {
-	old := config.State{UserID: 42, Username: "alice", Login: "alice", FullName: "Alice"}
+	old := config.State{UserID: 42, Username: "alice", Login: "alice", FullName: "Alice", DefaultProject: 9}
 	m := domain.TeamMember{ID: 7, Username: "bob", FullName: "Bob"}
 
 	got := old.LoggedIn(m, "bob")

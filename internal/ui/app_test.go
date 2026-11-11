@@ -12,12 +12,14 @@ import (
 	"time"
 
 	tea "charm.land/bubbletea/v2"
+	"github.com/charmbracelet/colorprofile"
 	"github.com/charmbracelet/x/ansi"
 
 	"github.com/zeckitoz/taiga-tui/internal/config"
 	"github.com/zeckitoz/taiga-tui/internal/domain"
 	"github.com/zeckitoz/taiga-tui/internal/session"
 	"github.com/zeckitoz/taiga-tui/internal/taiga"
+	"github.com/zeckitoz/taiga-tui/internal/taiga/taigafake"
 )
 
 var update = flag.Bool("update", false, "rewrite golden files")
@@ -33,7 +35,7 @@ func TestStartWithValidTokenSkipsLogin(t *testing.T) {
 	if sess.resumedFor != "alice" {
 		t.Errorf("resume asked for %q", sess.resumedFor)
 	}
-	h.golden("logged_in")
+	h.golden("picker")
 }
 
 func TestStartWithoutTokenShowsLoginWithEmptyFields(t *testing.T) {
@@ -123,7 +125,7 @@ func TestSuccessfulLoginSavesTokensAndState(t *testing.T) {
 	if h.state.saved != want {
 		t.Errorf("state.json: got %+v\nwant %+v", h.state.saved, want)
 	}
-	h.golden("logged_in")
+	h.golden("picker")
 }
 
 func TestLoginWhileRequestRunsShowsSpinnerAndLocksInput(t *testing.T) {
@@ -228,7 +230,7 @@ func TestFailedStateSaveIsShownWithoutQuitting(t *testing.T) {
 
 	h.key("enter")
 
-	if view := h.plainView(); !strings.Contains(view, "Couldn't save settings: read-only file system") || !strings.Contains(view, "Logged in as Alice Example") {
+	if view := h.plainView(); !strings.Contains(view, "Couldn't save settings: read-only file system") || !strings.Contains(view, "Select project") {
 		t.Errorf("view:\n%s", view)
 	}
 }
@@ -247,7 +249,7 @@ func TestEscOnLoginQuits(t *testing.T) {
 func TestQuitKeys(t *testing.T) {
 	for _, k := range []string{"q", "ctrl+c"} {
 		t.Run(k, func(t *testing.T) {
-			h := newHarness(t, &fakeSession{resume: true}, config.State{Username: "alice", FullName: "Alice"})
+			h := newHarness(t, &fakeSession{resume: true}, config.State{UserID: 42, Username: "alice", FullName: "Alice", DefaultProject: webShop.ID})
 			h.start()
 
 			h.key(k)
@@ -275,6 +277,7 @@ func TestWarningsAppearInStatusLine(t *testing.T) {
 	h.app = New(Deps{
 		Host:     "taiga.example.org",
 		Session:  h.sess,
+		Taiga:    h.taiga,
 		State:    h.state,
 		Warnings: []config.Warning{`Unknown key "colors" in config.toml`, "state.json is corrupt, using defaults"},
 		Tick:     noTick,
@@ -322,6 +325,7 @@ type harness struct {
 	t     *testing.T
 	app   App
 	sess  *fakeSession
+	taiga *taigafake.Fake
 	state *fakeState
 	quit  bool
 }
@@ -329,13 +333,16 @@ type harness struct {
 func newHarness(t *testing.T, sess *fakeSession, st config.State) *harness {
 	t.Helper()
 	state := &fakeState{}
+	api := newFake()
 	return &harness{
 		t:     t,
 		sess:  sess,
+		taiga: api,
 		state: state,
 		app: New(Deps{
 			Host:         "taiga.example.org",
 			Session:      sess,
+			Taiga:        api,
 			State:        state,
 			InitialState: st,
 			Tick:         noTick,
@@ -401,6 +408,14 @@ func keyMsg(k string) tea.KeyPressMsg {
 		return tea.KeyPressMsg{Code: 'c', Mod: tea.ModCtrl}
 	case "ctrl+u":
 		return tea.KeyPressMsg{Code: 'u', Mod: tea.ModCtrl}
+	case "up":
+		return tea.KeyPressMsg{Code: tea.KeyUp}
+	case "down":
+		return tea.KeyPressMsg{Code: tea.KeyDown}
+	case "left":
+		return tea.KeyPressMsg{Code: tea.KeyLeft}
+	case "right":
+		return tea.KeyPressMsg{Code: tea.KeyRight}
 	default:
 		r := []rune(k)[0]
 		return tea.KeyPressMsg{Code: r, Text: k}
@@ -422,12 +437,29 @@ func (h *harness) plainView() string {
 // made visible with a "|" at each line end.
 func (h *harness) golden(name string) {
 	h.t.Helper()
-	lines := strings.Split(h.plainView(), "\n")
+	h.compareGolden(name+".golden", h.plainView())
+}
+
+// ansiGolden is golden with colors, downsampled to the fixed ANSI256
+// profile so that the file does not depend on the terminal.
+func (h *harness) ansiGolden(name string) {
+	h.t.Helper()
+	var buf strings.Builder
+	w := &colorprofile.Writer{Forward: &buf, Profile: colorprofile.ANSI256}
+	if _, err := w.WriteString(h.app.View().Content); err != nil {
+		h.t.Fatal(err)
+	}
+	h.compareGolden(name+".ansi.golden", buf.String())
+}
+
+func (h *harness) compareGolden(file, view string) {
+	h.t.Helper()
+	lines := strings.Split(view, "\n")
 	for i, l := range lines {
 		lines[i] = l + "|"
 	}
 	got := strings.Join(lines, "\n") + "\n"
-	path := filepath.Join("testdata", name+".golden")
+	path := filepath.Join("testdata", file)
 	if *update {
 		if err := os.MkdirAll("testdata", 0o755); err != nil {
 			h.t.Fatal(err)

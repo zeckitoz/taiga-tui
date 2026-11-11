@@ -11,13 +11,9 @@ import (
 	"io"
 	"net"
 	"net/http"
-	"time"
 
 	"github.com/zeckitoz/taiga-tui/internal/domain"
 )
-
-// DefaultTimeout is the time a request may take, including reading the response.
-const DefaultTimeout = 15 * time.Second
 
 // Tokens are the JWTs Taiga hands out on login and refresh.
 type Tokens struct {
@@ -37,22 +33,10 @@ type AuthAPI struct {
 	http    *http.Client
 }
 
-// Option configures an AuthAPI.
-type Option func(*AuthAPI)
-
-// WithTimeout replaces DefaultTimeout.
-func WithTimeout(d time.Duration) Option {
-	return func(a *AuthAPI) { a.http.Timeout = d }
-}
-
 // NewAuthAPI returns the auth API of the instance at baseURL, which has no
 // trailing slash.
 func NewAuthAPI(baseURL string, opts ...Option) *AuthAPI {
-	a := &AuthAPI{baseURL: baseURL, http: &http.Client{Timeout: DefaultTimeout}}
-	for _, opt := range opts {
-		opt(a)
-	}
-	return a
+	return &AuthAPI{baseURL: baseURL, http: newHTTPClient(opts)}
 }
 
 type loginRequest struct {
