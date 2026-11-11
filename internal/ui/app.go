@@ -108,9 +108,10 @@ type (
 		err       error
 	}
 	userStoryLoadedMsg struct {
-		load  board.LoadUserStory
-		story domain.UserStory
-		err   error
+		projectID int64
+		load      board.LoadUserStory
+		story     domain.UserStory
+		err       error
 	}
 )
 
@@ -150,9 +151,9 @@ type App struct {
 	// hasKanban is set once the Kanban Board of project is loaded.
 	hasKanban bool
 	kanbanTop int
-	// detailClosed hides the detail view, which is open by default. It is
-	// UI state only and never persisted.
-	detailClosed bool
+	// detailOpen shows the detail view, which is open by default. It is UI
+	// state only and never persisted.
+	detailOpen bool
 }
 
 // New returns the App. It starts by looking for a stored session.
@@ -160,7 +161,7 @@ func New(d Deps) App {
 	if d.Tick == nil {
 		d.Tick = tea.Tick
 	}
-	a := App{deps: d, state: d.InitialState, spinner: spinner{tick: d.Tick}}
+	a := App{deps: d, state: d.InitialState, spinner: spinner{tick: d.Tick}, detailOpen: true}
 	a.me = domain.TeamMember{ID: a.state.UserID, Username: a.state.Username, FullName: a.state.FullName}
 	for _, w := range d.Warnings {
 		a.status = append(a.status, statusMsg{text: string(w)})
@@ -245,8 +246,10 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case kanbanLoadedMsg:
 		return a.kanbanLoaded(msg)
 	case userStoryLoadedMsg:
-		// A result for a User Story of another project or an earlier load
-		// finds no request in the board and is dropped there.
+		if msg.projectID != a.project.ID {
+			return a, nil // a load of a project that is no longer open
+		}
+		// The board drops results of loads before its last reload.
 		if msg.err != nil {
 			a.kanban = a.kanban.UserStoryFailed(msg.load, msg.err)
 		} else {
@@ -473,6 +476,7 @@ func (a App) kanbanLoaded(msg kanbanLoadedMsg) (tea.Model, tea.Cmd) {
 		if a.hasKanban && !errors.Is(msg.err, taiga.ErrSessionExpired) {
 			a = a.withoutTransient()
 			a.status = append(a.status, statusMsg{text: "Couldn't refresh: " + reason(msg.err), isErr: true, transient: true})
+			a.scrollKanban() // the status line takes rows from the list
 			return a, nil
 		}
 		return a.failed(msg.err, "Couldn't load Kanban Board", App.loadKanban)
@@ -494,7 +498,7 @@ func (a App) kanbanLoaded(msg kanbanLoadedMsg) (tea.Model, tea.Cmd) {
 // loadDetail loads the description of the selected User Story if the
 // detail view shows it and it is not loaded yet.
 func (a App) loadDetail() (App, tea.Cmd) {
-	if a.detailClosed || !a.hasKanban {
+	if !a.detailOpen || !a.hasKanban {
 		return a, nil
 	}
 	k, load, ok := a.kanban.LoadDetail()
@@ -502,10 +506,10 @@ func (a App) loadDetail() (App, tea.Cmd) {
 		return a, nil
 	}
 	a.kanban = k
-	api := a.deps.Taiga
+	api, projectID := a.deps.Taiga, a.project.ID
 	return a, func() tea.Msg {
 		s, err := api.UserStory(context.Background(), load.ID)
-		return userStoryLoadedMsg{load: load, story: s, err: err}
+		return userStoryLoadedMsg{projectID: projectID, load: load, story: s, err: err}
 	}
 }
 
@@ -559,7 +563,7 @@ func (a App) updateBoard(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case "down", "j":
 		a.kanban = a.kanban.CursorDown()
 	case "enter":
-		a.detailClosed = !a.detailClosed
+		a.detailOpen = !a.detailOpen
 	}
 	a.scrollKanban()
 	return a.loadDetail()
@@ -568,7 +572,7 @@ func (a App) updateBoard(msg tea.Msg) (tea.Model, tea.Cmd) {
 // scrollKanban keeps the selected User Story visible.
 func (a *App) scrollKanban() {
 	n := len(a.kanban.Rows())
-	l := layoutKanban(a.width, a.bodyHeight()-kanbanChromeLines, !a.detailClosed)
+	l := layoutKanban(a.width, a.bodyHeight()-kanbanChromeLines, a.detailOpen)
 	a.kanbanTop = scrollTop(a.kanbanTop, a.kanban.SelectedIndex(), n, l.listH)
 }
 
@@ -649,7 +653,7 @@ func (a App) boardBody() string {
 	if !a.project.KanbanEnabled {
 		return centered(a.width, h, faintStyle.Render("Kanban is disabled in "+a.project.Name))
 	}
-	return renderKanban(a.kanban, a.kanbanTop, a.width, h, !a.detailClosed)
+	return renderKanban(a.kanban, a.kanbanTop, a.width, h, a.detailOpen)
 }
 
 func (a App) boardKeys() string {

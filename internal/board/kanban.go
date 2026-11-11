@@ -53,10 +53,12 @@ type Row struct {
 	Selected bool
 }
 
-// Assignee is an Assignee as shown in a row.
+// Assignee is an Assignee as shown in a row or the detail view.
 type Assignee struct {
+	Name     string
 	Initials string
-	Mine     bool
+	// Mine marks the logged-in Team Member.
+	Mine bool
 }
 
 // NewKanban returns the Kanban Board of p with the given User Stories, seen
@@ -201,9 +203,9 @@ func (k Kanban) assignees(s domain.UserStory) []Assignee {
 	}
 	out := make([]Assignee, len(s.Assignees))
 	for i, id := range s.Assignees {
-		out[i] = Assignee{Initials: "??", Mine: id == k.me}
+		out[i] = Assignee{Name: "Unknown member", Initials: "??", Mine: id == k.me}
 		if m, ok := k.project.Member(id); ok {
-			out[i].Initials = Initials(m.FullName)
+			out[i].Name, out[i].Initials = m.FullName, Initials(m.FullName)
 		}
 	}
 	return out

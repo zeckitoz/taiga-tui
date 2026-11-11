@@ -53,10 +53,10 @@ func TestRowsOfActiveTabAreSortedByKanbanOrder(t *testing.T) {
 	want := []board.Row{
 		{
 			ID: 11, Ref: 2, Title: "First", Mine: true, Selected: true,
-			Assignees: []board.Assignee{{Initials: "BK"}, {Initials: "AE", Mine: true}},
+			Assignees: []board.Assignee{{Name: "bkoch", Initials: "BK"}, {Name: "Alice Example", Initials: "AE", Mine: true}},
 			Tasks:     domain.TaskProgress{Done: 1, Total: 2},
 		},
-		{ID: 12, Ref: 3, Title: "Second", Assignees: []board.Assignee{{Initials: "CM"}}},
+		{ID: 12, Ref: 3, Title: "Second", Assignees: []board.Assignee{{Name: "Carla de la Mar", Initials: "CM"}}},
 		{ID: 10, Ref: 1, Title: "Third"},
 	}
 	if got := k.Rows(); !reflect.DeepEqual(got, want) {
@@ -64,11 +64,11 @@ func TestRowsOfActiveTabAreSortedByKanbanOrder(t *testing.T) {
 	}
 }
 
-func TestUnknownMemberHasPlaceholderInitials(t *testing.T) {
+func TestUnknownMemberHasPlaceholderNameAndInitials(t *testing.T) {
 	k := board.NewKanban(project, stories, me).NextTab()
 
 	rows := k.Rows()
-	if len(rows) != 1 || !reflect.DeepEqual(rows[0].Assignees, []board.Assignee{{Initials: "??"}}) {
+	if len(rows) != 1 || !reflect.DeepEqual(rows[0].Assignees, []board.Assignee{{Name: "Unknown member", Initials: "??"}}) {
 		t.Errorf("got %+v", rows)
 	}
 }
@@ -181,22 +181,12 @@ func TestDetailDescribesSelectedUserStory(t *testing.T) {
 	want := board.Detail{
 		ID: 11, Ref: 2, Title: "First",
 		Status:     project.UserStoryStatuses[0],
-		Assignees:  []board.Person{{Name: "bkoch"}, {Name: "Alice Example", Mine: true}},
+		Assignees:  []board.Assignee{{Name: "bkoch", Initials: "BK"}, {Name: "Alice Example", Initials: "AE", Mine: true}},
 		SprintName: "Sprint 4",
 		Tasks:      domain.TaskProgress{Done: 1, Total: 2},
 	}
 	if !ok || !reflect.DeepEqual(got, want) {
 		t.Errorf("got  %+v\nwant %+v", got, want)
-	}
-}
-
-func TestDetailNamesUnknownMember(t *testing.T) {
-	k := board.NewKanban(project, stories, me).NextTab()
-
-	got, _ := k.Detail()
-
-	if want := []board.Person{{Name: "Unknown member"}}; !reflect.DeepEqual(got.Assignees, want) {
-		t.Errorf("got %+v", got.Assignees)
 	}
 }
 
@@ -240,7 +230,7 @@ func TestLoadedDescriptionAppearsInDetail(t *testing.T) {
 	}
 }
 
-func TestFailedDescriptionLoadIsReported(t *testing.T) {
+func TestFailedDescriptionLoadIsReportedAndRetried(t *testing.T) {
 	k, load, _ := board.NewKanban(project, stories, me).LoadDetail()
 	boom := errors.New("timed out")
 
@@ -250,8 +240,8 @@ func TestFailedDescriptionLoadIsReported(t *testing.T) {
 	if d.Description.State != board.DescriptionFailed || !errors.Is(d.Description.Err, boom) {
 		t.Errorf("got %+v", d.Description)
 	}
-	if _, _, ok := k.LoadDetail(); ok {
-		t.Error("retried a failed load before a refresh")
+	if _, retry, ok := k.LoadDetail(); !ok || retry.ID != 11 {
+		t.Errorf("failed load not retried: %+v, %v", retry, ok)
 	}
 }
 

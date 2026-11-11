@@ -1,11 +1,13 @@
 package ui
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
 
+	"github.com/zeckitoz/taiga-tui/internal/domain"
 	"github.com/zeckitoz/taiga-tui/internal/taiga"
 )
 
@@ -102,7 +104,7 @@ func TestEachDescriptionLoadsOnce(t *testing.T) {
 	}
 }
 
-func TestFailedDescriptionLoadShowsReasonUntilRefresh(t *testing.T) {
+func TestFailedDescriptionLoadShowsReasonAndRetriesOnNextKey(t *testing.T) {
 	h := onKanban(t, 120, 40)
 	h.taiga.FailNext("UserStory", taiga.ErrTimeout)
 
@@ -110,9 +112,10 @@ func TestFailedDescriptionLoadShowsReasonUntilRefresh(t *testing.T) {
 	if view := h.plainView(); !strings.Contains(view, "Couldn't load description: timed out") {
 		t.Errorf("no error:\n%s", view)
 	}
-	h.key("r")
+	h.key("enter")
+	h.key("enter")
 	if view := h.plainView(); !strings.Contains(view, "Customers pay with Visa") {
-		t.Errorf("refresh did not load the description again:\n%s", view)
+		t.Errorf("reopening did not load the description again:\n%s", view)
 	}
 }
 
@@ -130,7 +133,7 @@ func TestDetailViewOfEmptyTabDescribesStatus(t *testing.T) {
 	h.key("l") // Ready, empty
 
 	view := h.plainView()
-	if !strings.Contains(view, "No user stories in Ready") || !strings.Contains(view, "0 user stories") {
+	if !strings.Contains(view, "No user stories in Ready") || strings.Contains(view, "Assignees") {
 		t.Errorf("view:\n%s", view)
 	}
 }
@@ -163,4 +166,27 @@ func TestDetailViewFitsSmallestTerminal(t *testing.T) {
 func (h *harness) detailRight() bool {
 	lines := strings.Split(h.plainView(), "\n")
 	return len(lines) > 3 && strings.Contains(lines[3], "│")
+}
+
+func TestRefreshErrorKeepsCursorVisible(t *testing.T) {
+	api := newFake()
+	var many []domain.UserStory
+	for i := range 40 {
+		many = append(many, domain.UserStory{ID: int64(1000 + i), Ref: 1000 + i, Title: fmt.Sprintf("Story %d", i), Status: 101, KanbanOrder: int64(i)})
+	}
+	api.SetStories(webShop.ID, many...)
+	h := resumed(t, api, aliceState(webShop.ID))
+	h.send(tea.WindowSizeMsg{Width: 120, Height: 30})
+	h.runCmd(h.app.Init())
+	for range 25 {
+		h.key("j") // the last visible row
+	}
+	api.FailNext("Kanban", taiga.ErrTimeout)
+
+	h.key("r")
+
+	// once in the list and once in the detail view
+	if view := h.plainView(); !strings.Contains(view, "Couldn't refresh") || strings.Count(view, "Story 25 ") != 2 {
+		t.Errorf("cursor scrolled out of view:\n%s", view)
+	}
 }

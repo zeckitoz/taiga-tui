@@ -14,7 +14,7 @@ type Detail struct {
 	Title string
 	// Status is the zero Status if the User Story's Status is unknown.
 	Status     domain.Status
-	Assignees  []Person
+	Assignees  []Assignee
 	SprintName string
 	Tasks      domain.TaskProgress
 	// Description is loaded separately, see LoadDetail.
@@ -24,7 +24,8 @@ type Detail struct {
 // Description is the description of a User Story and the state of its load.
 type Description struct {
 	State DescriptionState
-	// Text is the Markdown text; while it is reloaded, the earlier text.
+	// Text is the Markdown text; while it is reloaded after a refresh, the
+	// earlier text.
 	Text string
 	// Err is why the load failed.
 	Err error
@@ -65,20 +66,19 @@ type LoadUserStory struct {
 }
 
 // LoadDetail returns the effect of loading the description of the selected
-// User Story, unless it was loaded or is loading since the last Reload.
+// User Story, unless it was loaded or is loading since the last Reload. A
+// failed load is tried again.
 func (k Kanban) LoadDetail() (Kanban, LoadUserStory, bool) {
 	d, ok := k.Detail()
 	if !ok {
 		return k, LoadUserStory{}, false
 	}
 	e, known := k.descriptions[d.ID]
-	if known && e.generation == k.generation {
+	if known && e.generation == k.generation && (!e.done || e.err == nil) {
 		return k, LoadUserStory{}, false
 	}
 	e.generation, e.done, e.err = k.generation, false, nil
-	k.descriptions = maps.Clone(k.descriptions) // never share the map with the receiver
-	k.descriptions[d.ID] = e
-	return k, LoadUserStory{ID: d.ID, Generation: k.generation}, true
+	return k.withDescription(d.ID, e), LoadUserStory{ID: d.ID, Generation: k.generation}, true
 }
 
 // UserStoryLoaded takes the description from the result of load.
@@ -98,8 +98,12 @@ func (k Kanban) loadEnded(load LoadUserStory, apply func(*description)) Kanban {
 	}
 	e.done = true
 	apply(&e)
-	k.descriptions = maps.Clone(k.descriptions)
-	k.descriptions[load.ID] = e
+	return k.withDescription(load.ID, e)
+}
+
+func (k Kanban) withDescription(id int64, e description) Kanban {
+	k.descriptions = maps.Clone(k.descriptions) // never share the map with the receiver
+	k.descriptions[id] = e
 	return k
 }
 
@@ -112,13 +116,6 @@ func (k Kanban) description(id int64) Description {
 		return Description{State: DescriptionLoaded, Text: e.text}
 	}
 	return Description{State: DescriptionLoading}
-}
-
-// Person is a Team Member as shown in the detail view.
-type Person struct {
-	Name string
-	// Mine marks the logged-in Team Member.
-	Mine bool
 }
 
 // Detail returns the detail of the selected User Story, or false if the
@@ -140,12 +137,6 @@ func (k Kanban) Detail() (Detail, bool) {
 	if j := slices.IndexFunc(k.statuses, func(st domain.Status) bool { return st.ID == s.Status }); j >= 0 {
 		d.Status = k.statuses[j]
 	}
-	for _, id := range s.Assignees {
-		p := Person{Name: "Unknown member", Mine: id == k.me}
-		if m, ok := k.project.Member(id); ok {
-			p.Name = m.FullName
-		}
-		d.Assignees = append(d.Assignees, p)
-	}
+	d.Assignees = k.assignees(s)
 	return d, true
 }

@@ -53,6 +53,11 @@ func statusStyle(hex string) lipgloss.Style {
 	return lipgloss.NewStyle().Foreground(statusColor(hex))
 }
 
+// statusHeadingStyle names a Status as a heading in its color.
+func statusHeadingStyle(hex string) lipgloss.Style {
+	return statusStyle(hex).Bold(true)
+}
+
 // statusColor returns Taiga's color of a Status, which is "#rrggbb" or
 // "#rgb", or the fallback for anything else.
 func statusColor(hex string) color.Color {

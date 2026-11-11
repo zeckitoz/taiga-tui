@@ -65,7 +65,7 @@ func layoutKanban(w, h int, detail bool) kanbanLayout {
 // from line top and, if detail is set, the detail view.
 func renderKanban(k board.Kanban, top, w, h int, detail bool) string {
 	tabs := k.Tabs()
-	head := []string{tabBar(tabs, w), faintStyle.Render(strings.Repeat("─", w))}
+	head := []string{tabBar(tabs, w), rule(w)}
 	if k.Empty() {
 		body := centered(w, h-kanbanChromeLines, faintStyle.Render("No user stories on the Kanban Board"), "", faintStyle.Render("r refresh"))
 		return strings.Join(append(head, body), "\n")
@@ -73,24 +73,23 @@ func renderKanban(k board.Kanban, top, w, h int, detail bool) string {
 	l := layoutKanban(w, h-kanbanChromeLines, detail)
 	var list string
 	if rows := k.Rows(); len(rows) == 0 {
-		list = centered(l.listW, l.listH, faintStyle.Render("No user stories in "+k.ActiveStatus().Name))
+		list = centered(l.listW, l.listH, faintStyle.Render("No user stories in "+plainText(k.ActiveStatus().Name)))
 	} else {
 		list = storyList(rows, top, l.listW, l.listH)
 	}
 	if l.detailH == 0 {
 		return strings.Join(append(head, list), "\n")
 	}
-	pane := detailPane(k, l.detailW, l.detailH)
+	pane := renderDetail(k, l.detailW, l.detailH, !l.right)
 	if l.right {
-		listLines, paneLines := strings.Split(list, "\n"), strings.Split(pane, "\n")
-		rule := faintStyle.Render("│")
-		for i := range listLines {
-			head = append(head, listLines[i]+rule+paneLines[i])
-		}
-		return strings.Join(head, "\n")
+		rule := faintStyle.Render(strings.TrimSuffix(strings.Repeat("│\n", l.detailH), "\n"))
+		return strings.Join(append(head, lipgloss.JoinHorizontal(lipgloss.Top, list, rule, pane)), "\n")
 	}
-	return strings.Join(append(head, list, faintStyle.Render(strings.Repeat("─", w)), pane), "\n")
+	return strings.Join(append(head, list, rule(w), pane), "\n")
 }
+
+// rule is a horizontal line across w cells.
+func rule(w int) string { return faintStyle.Render(strings.Repeat("─", w)) }
 
 // tabBar renders one tab per Status. If the full labels don't fit, inactive
 // tabs shrink to their count.
@@ -114,7 +113,7 @@ func tabLabel(t board.Tab, short bool) string {
 	if t.WIPLimit > 0 {
 		count += "/" + strconv.Itoa(t.WIPLimit)
 	}
-	label := " ● " + t.Name + " " + count + " "
+	label := " ● " + plainText(t.Name) + " " + count + " "
 	if short {
 		label = " ●" + count + " "
 	}
@@ -141,7 +140,7 @@ func storyList(rows []board.Row, top, w, h int) string {
 			marker = " " + mineStyle.Render("▍") + " "
 		}
 		styled := !r.Selected
-		line := marker + fit(ref(r.Ref), refW) + " " + fit(r.Title, titleW) + "  " +
+		line := marker + fit(ref(r.Ref), refW) + " " + fit(plainText(r.Title), titleW) + "  " +
 			fit(initials(r.Assignees, styled), whoW) + "  " + fit(progress(r.Tasks, styled), progW) + " "
 		if r.Selected {
 			line = cursorStyle.Render(fit(ansi.Strip(line), w))
