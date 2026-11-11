@@ -162,6 +162,9 @@ func TestFailedLoginShowsErrorAndClearsPassword(t *testing.T) {
 		want string
 	}{
 		{name: "invalid", err: taiga.ErrInvalidCredentials, want: "Invalid username or password"},
+		{name: "invalid with reason", err: &taiga.RejectedError{Code: 401, Reason: "No active account found with the given credentials", Err: taiga.ErrInvalidCredentials}, want: "Invalid username or password"},
+		{name: "rejected", err: &taiga.RejectedError{Code: 400, Reason: "username: This field may not be blank.", Err: taiga.ErrInvalidCredentials}, want: "Login rejected: username: This field may not be blank."},
+		{name: "rejected without reason", err: &taiga.RejectedError{Code: 400, Err: taiga.ErrInvalidCredentials}, want: "Invalid username or password"},
 		{name: "unreachable", err: fmt.Errorf("%w: dial tcp: connection refused", taiga.ErrUnreachable), want: "Cannot reach taiga.example.org: no connection"},
 		{name: "timeout", err: taiga.ErrTimeout, want: "Cannot reach taiga.example.org: timed out"},
 		{name: "server", err: &taiga.ServerError{Code: 502}, want: "Cannot reach taiga.example.org: server error (502)"},
@@ -184,8 +187,11 @@ func TestFailedLoginShowsErrorAndClearsPassword(t *testing.T) {
 			if view := h.plainView(); !strings.Contains(words(view), tt.want) {
 				t.Errorf("view lacks %q:\n%s", tt.want, view)
 			}
-			if tt.name == "invalid" {
+			switch tt.name {
+			case "invalid":
 				h.golden("login_invalid")
+			case "rejected":
+				h.golden("login_rejected")
 			}
 		})
 	}

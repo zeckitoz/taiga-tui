@@ -4,6 +4,7 @@ package taiga
 
 import (
 	"bytes"
+	"cmp"
 	"context"
 	"encoding/json"
 	"errors"
@@ -11,6 +12,8 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"strings"
+	"unicode/utf8"
 
 	"github.com/zeckitoz/taiga-tui/internal/domain"
 )
@@ -57,7 +60,7 @@ type loginResponse struct {
 func (a *AuthAPI) Login(ctx context.Context, username, password string) (LoginResult, error) {
 	code, data, err := a.post(ctx, "/auth", loginRequest{Type: "normal", Username: username, Password: password})
 	if err == nil {
-		err = authStatusError(code, ErrInvalidCredentials)
+		err = authStatusError(code, data, ErrInvalidCredentials, password)
 	}
 	if err != nil {
 		return LoginResult{}, err
@@ -95,7 +98,7 @@ type refreshResponse struct {
 func (a *AuthAPI) Refresh(ctx context.Context, refresh string) (Tokens, error) {
 	code, data, err := a.post(ctx, "/auth/refresh", refreshRequest{Refresh: refresh})
 	if err == nil {
-		err = authStatusError(code, ErrSessionExpired)
+		err = authStatusError(code, data, ErrSessionExpired, refresh)
 	}
 	if err != nil {
 		return Tokens{}, err
@@ -111,19 +114,110 @@ func (a *AuthAPI) Refresh(ctx context.Context, refresh string) (Tokens, error) {
 	return Tokens{Access: rr.AuthToken, Refresh: rr.Refresh}, nil
 }
 
-// authStatusError maps the status code of an auth call to a typed error;
-// rejected is the error for a 400 or 401, with which Taiga rejects the
-// credentials or token sent.
-func authStatusError(code int, rejected error) error {
+// authStatusError maps the status code of an auth call to a typed error.
+// Taiga rejects the credentials or token sent with a 400 or 401, which yields a
+// RejectedError wrapping rejected and carrying Taiga's reason from body; the
+// secrets sent never appear in that reason.
+func authStatusError(code int, body []byte, rejected error, secrets ...string) error {
 	switch {
 	case code == http.StatusOK:
 		return nil
 	case code == http.StatusUnauthorized, code == http.StatusBadRequest:
-		return rejected
+		return &RejectedError{Code: code, Reason: rejectionReason(body, secrets), Err: rejected}
 	case code >= 500:
 		return &ServerError{Code: code}
 	}
 	return fmt.Errorf("%w: HTTP %d", ErrUnexpected, code)
+}
+
+// maxReasonLength is the number of characters a rejection reason is cut to.
+const maxReasonLength = 200
+
+// rejectionReason extracts Taiga's reason from the body of a rejected auth
+// call: its _error_message, else its detail, else its first field error as
+// "<field>: <message>". It returns "" for a body without any of them or one
+// that is not a JSON object. The reason is one line of at most
+// maxReasonLength characters with every secret replaced by "[redacted]".
+func rejectionReason(body []byte, secrets []string) string {
+	fields, ok := objectFields(body)
+	if !ok {
+		return ""
+	}
+	var reason, detail, field string
+	for _, f := range fields {
+		switch {
+		case f.name == "_error_message":
+			reason = cmp.Or(reason, jsonString(f.value))
+		case f.name == "detail":
+			detail = cmp.Or(detail, jsonString(f.value))
+		case field == "" && !strings.HasPrefix(f.name, "_") && f.name != "code":
+			if msg := fieldMessage(f.value); msg != "" {
+				field = f.name + ": " + msg
+			}
+		}
+	}
+	reason = cmp.Or(reason, detail, field)
+	for _, s := range secrets {
+		if s != "" {
+			reason = strings.ReplaceAll(reason, s, "[redacted]")
+		}
+	}
+	reason = strings.Join(strings.Fields(reason), " ")
+	if utf8.RuneCountInString(reason) > maxReasonLength {
+		reason = string([]rune(reason)[:maxReasonLength-1]) + "…"
+	}
+	return reason
+}
+
+type jsonField struct {
+	name  string
+	value json.RawMessage
+}
+
+// objectFields returns the fields of the JSON object in data in the order in
+// which they appear, or false if data is not a JSON object.
+func objectFields(data []byte) ([]jsonField, bool) {
+	dec := json.NewDecoder(bytes.NewReader(data))
+	if tok, err := dec.Token(); err != nil || tok != json.Delim('{') {
+		return nil, false
+	}
+	var fields []jsonField
+	for dec.More() {
+		tok, err := dec.Token()
+		if err != nil {
+			return nil, false
+		}
+		var f jsonField
+		f.name, _ = tok.(string)
+		if err := dec.Decode(&f.value); err != nil {
+			return nil, false
+		}
+		fields = append(fields, f)
+	}
+	if _, err := dec.Token(); err != nil {
+		return nil, false
+	}
+	return fields, true
+}
+
+// jsonString returns value if it is a JSON string, else "".
+func jsonString(value json.RawMessage) string {
+	var s string
+	_ = json.Unmarshal(value, &s)
+	return s
+}
+
+// fieldMessage returns the message of a field error, which Taiga sends as a
+// list of messages or as a single one; it returns "" for anything else.
+func fieldMessage(value json.RawMessage) string {
+	var list []json.RawMessage
+	if json.Unmarshal(value, &list) == nil {
+		if len(list) == 0 {
+			return ""
+		}
+		return jsonString(list[0])
+	}
+	return jsonString(value)
 }
 
 // post sends body as JSON to the API path and returns the status code and the

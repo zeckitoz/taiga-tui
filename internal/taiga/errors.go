@@ -28,3 +28,25 @@ var (
 type ServerError struct{ Code int }
 
 func (e *ServerError) Error() string { return fmt.Sprintf("server error (%d)", e.Code) }
+
+// RejectedError reports that Taiga rejected the credentials or token of an
+// auth call with a 400 or 401. It unwraps to ErrInvalidCredentials for a login
+// and to ErrSessionExpired for a token refresh.
+type RejectedError struct {
+	// Code is the HTTP status code, 400 or 401.
+	Code int
+	// Reason is Taiga's explanation on one line, without the secrets sent, or
+	// empty if Taiga gave none.
+	Reason string
+	// Err is ErrInvalidCredentials or ErrSessionExpired.
+	Err error
+}
+
+func (e *RejectedError) Error() string {
+	if e.Reason == "" {
+		return e.Err.Error()
+	}
+	return e.Err.Error() + ": " + e.Reason
+}
+
+func (e *RejectedError) Unwrap() error { return e.Err }
