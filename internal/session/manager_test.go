@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -52,7 +53,7 @@ func TestSaveStoresTokensAsSeparateKeyringEntries(t *testing.T) {
 	if err != nil {
 		t.Fatalf("save: %v", err)
 	}
-	if saved.UsedFile {
+	if saved.File != "" {
 		t.Error("tokens went to the file although the keyring works")
 	}
 	if kr.data[host+"/alice/access"] != res.Tokens.Access || kr.data[host+"/alice/refresh"] != res.Tokens.Refresh {
@@ -75,7 +76,7 @@ func TestSaveFallsBackToFileWhenKeyringWriteFails(t *testing.T) {
 	if err != nil {
 		t.Fatalf("save: %v", err)
 	}
-	if !saved.UsedFile || saved.File != filepath.Join(dir, "credentials") {
+	if saved.File != filepath.Join(dir, "credentials") {
 		t.Errorf("got %+v, want the file fallback", saved)
 	}
 	file := session.NewFileStore(dir)
@@ -94,7 +95,7 @@ func TestSaveFallsBackToFileWhenKeyringHangs(t *testing.T) {
 
 	saved, err := m.Save(loginResult(now.Add(time.Hour)))
 
-	if err != nil || !saved.UsedFile {
+	if err != nil || saved.File == "" {
 		t.Fatalf("got %+v, %v; want the file fallback", saved, err)
 	}
 }
@@ -274,4 +275,66 @@ type fakeAuth struct {
 func (f *fakeAuth) Login(_ context.Context, username, password string) (taiga.LoginResult, error) {
 	f.username, f.password = username, password
 	return f.result, f.err
+}
+
+func TestResumePrefersFileOverStaleKeyringAfterFallback(t *testing.T) {
+	kr := newMemStore()
+	kr.data[host+"/alice/access"] = jwt(now.Add(-time.Hour)) // from an older login
+	dir := t.TempDir()
+	m := newManager(t, &fakeAuth{}, kr, dir)
+	kr.setErr = errors.New("keyring locked")
+	if _, err := m.Save(loginResult(now.Add(time.Hour))); err != nil {
+		t.Fatal(err)
+	}
+	kr.setErr = nil
+
+	if !newManager(t, &fakeAuth{}, kr, dir).Resume("alice") {
+		t.Error("the stale keyring token won over the fresh one in the file")
+	}
+}
+
+func TestLogoutWithoutUsernameClearsAllFileTokensOfHost(t *testing.T) {
+	dir := t.TempDir()
+	file := session.NewFileStore(dir)
+	for _, key := range []string{host + "/alice/access", host + "/bob/refresh", "other.example.org/alice/access"} {
+		if err := file.Set(key, "tok"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	m := newManager(t, &fakeAuth{}, newMemStore(), dir)
+
+	if err := m.Logout(""); err != nil {
+		t.Fatalf("logout: %v", err)
+	}
+
+	if _, err := file.Get("other.example.org/alice/access"); err != nil {
+		t.Errorf("token of another instance was deleted: %v", err)
+	}
+	for _, key := range []string{host + "/alice/access", host + "/bob/refresh"} {
+		if _, err := file.Get(key); !errors.Is(err, session.ErrNotFound) {
+			t.Errorf("%s still stored: %v", key, err)
+		}
+	}
+}
+
+func TestLogoutGivesUpOnHangingKeyringAfterOneTimeout(t *testing.T) {
+	hang := &countingHang{hangingStore: newHangingStore(t)}
+	m := newManager(t, &fakeAuth{}, session.WithTimeout(hang, 20*time.Millisecond), t.TempDir())
+
+	if err := m.Logout("alice"); !errors.Is(err, session.ErrTimeout) {
+		t.Errorf("got %v, want ErrTimeout", err)
+	}
+	if hang.calls.Load() != 1 {
+		t.Errorf("keyring called %d times, want 1", hang.calls.Load())
+	}
+}
+
+type countingHang struct {
+	*hangingStore
+	calls atomic.Int32
+}
+
+func (c *countingHang) Delete(key string) error {
+	c.calls.Add(1)
+	return c.hangingStore.Delete(key)
 }

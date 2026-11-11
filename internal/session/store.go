@@ -5,8 +5,10 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"maps"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -163,20 +165,31 @@ func (s *FileStore) Set(key, value string) error {
 // Delete removes the entry under key. The file is removed when it becomes
 // empty or is corrupt.
 func (s *FileStore) Delete(key string) error {
+	return s.deleteWhere(func(k string) bool { return k == key })
+}
+
+// DeletePrefix removes every entry whose key starts with prefix.
+func (s *FileStore) DeletePrefix(prefix string) error {
+	return s.deleteWhere(func(k string) bool { return strings.HasPrefix(k, prefix) })
+}
+
+func (s *FileStore) deleteWhere(match func(key string) bool) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	entries, err := s.read()
 	if err != nil {
 		return s.remove()
 	}
-	if _, ok := entries[key]; !ok {
+	n := len(entries)
+	maps.DeleteFunc(entries, func(k, _ string) bool { return match(k) })
+	switch {
+	case len(entries) == n:
 		return nil
-	}
-	delete(entries, key)
-	if len(entries) == 0 {
+	case len(entries) == 0:
 		return s.remove()
+	default:
+		return s.write(entries)
 	}
-	return s.write(entries)
 }
 
 func (s *FileStore) read() (map[string]string, error) {
@@ -198,11 +211,7 @@ func (s *FileStore) read() (map[string]string, error) {
 }
 
 func (s *FileStore) write(entries map[string]string) error {
-	data, err := json.MarshalIndent(entries, "", "  ")
-	if err != nil {
-		return err
-	}
-	return atomicfile.Write(s.path, append(data, '\n'))
+	return atomicfile.WriteJSON(s.path, entries)
 }
 
 func (s *FileStore) remove() error {

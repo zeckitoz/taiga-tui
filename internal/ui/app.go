@@ -10,7 +10,6 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
-	"github.com/charmbracelet/x/ansi"
 
 	"github.com/zeckitoz/taiga-tui/internal/config"
 	"github.com/zeckitoz/taiga-tui/internal/session"
@@ -37,7 +36,7 @@ type Deps struct {
 	State        StateStore
 	InitialState config.State
 	// Warnings are shown in the status line from the start.
-	Warnings []string
+	Warnings []config.Warning
 	// Tick replaces tea.Tick in tests.
 	Tick TickFunc
 }
@@ -97,7 +96,7 @@ func New(d Deps) App {
 	}
 	a := App{deps: d, state: d.InitialState, startSpinner: spinner{tick: d.Tick}}
 	for _, w := range d.Warnings {
-		a.status = append(a.status, statusMsg{text: w})
+		a.status = append(a.status, statusMsg{text: string(w)})
 	}
 	return a
 }
@@ -198,7 +197,7 @@ func (a App) loggedIn(msg saveDoneMsg) App {
 	a.screen = screenLoggedIn
 	a.form = loginForm{} // drop the password
 	a.state = a.state.LoggedIn(msg.result.Member, msg.login)
-	if msg.saved.UsedFile {
+	if msg.saved.File != "" {
 		a.status = append(a.status, statusMsg{
 			text: "System keyring unavailable, login saved in " + msg.saved.File,
 		})
@@ -242,7 +241,8 @@ func (a App) View() tea.View {
 func (a App) statusLine() string {
 	lines := make([]string, 0, len(a.status))
 	for _, s := range a.status {
-		text := ansi.Truncate(s.text, a.width, "…")
+		// Wrap rather than cut, so a long path stays readable.
+		text := lipgloss.Wrap(s.text, a.width, " /")
 		if s.isErr {
 			lines = append(lines, errorStyle.Render(text))
 		} else {

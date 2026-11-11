@@ -106,7 +106,7 @@ func (a *AuthAPI) Login(ctx context.Context, username, password string) (LoginRe
 		return LoginResult{}, fmt.Errorf("%w: %w", ErrUnexpected, err)
 	}
 	if lr.ID == 0 || lr.Username == "" || lr.AuthToken == "" || lr.Refresh == "" {
-		return LoginResult{}, fmt.Errorf("%w: login response lacks user or tokens", ErrUnexpected)
+		return LoginResult{}, fmt.Errorf("%w: login response lacks Team Member or tokens", ErrUnexpected)
 	}
 	name := lr.FullNameDisplay
 	if name == "" {

@@ -64,16 +64,12 @@ func run(args []string, getenv func(string) string, stdout, stderr io.Writer) in
 		return logout(sess, host, state, warnings, stdout, stderr)
 	}
 
-	texts := make([]string, len(warnings))
-	for i, w := range warnings {
-		texts[i] = string(w)
-	}
 	err = runTUI(ui.Deps{
 		Host:         host,
 		Session:      sess,
 		State:        stateFile,
 		InitialState: state,
-		Warnings:     texts,
+		Warnings:     warnings,
 	})
 	if err != nil {
 		fmt.Fprintf(stderr, "taiga-tui: %v\n", err)
@@ -88,15 +84,12 @@ var runTUI = func(d ui.Deps) error {
 	return err
 }
 
-// logout deletes the stored tokens of the Team Member from state.json. It
-// leaves config.toml and state.json alone.
+// logout deletes the stored tokens of the instance from the keyring and the
+// credentials file. The Team Member's username comes from state.json, and
+// config.toml and state.json stay as they are.
 func logout(sess *session.Manager, host string, state config.State, warnings []config.Warning, stdout, stderr io.Writer) int {
 	for _, w := range warnings {
 		fmt.Fprintf(stderr, "Warning: %s\n", w)
-	}
-	if state.Username == "" {
-		fmt.Fprintf(stdout, "Not logged in to %s.\n", host)
-		return 0
 	}
 	if err := sess.Logout(state.Username); err != nil {
 		fmt.Fprintf(stderr, "taiga-tui: logout: %v\n", err)

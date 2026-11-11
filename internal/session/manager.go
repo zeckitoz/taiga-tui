@@ -57,19 +57,25 @@ func (m *Manager) Authenticate(ctx context.Context, login, password string) (tai
 
 // Saved tells where Save stored the tokens.
 type Saved struct {
-	// UsedFile is set when the keyring failed and the tokens went to File.
-	UsedFile bool
-	File     string
+	// File is the credentials file if the keyring failed and the tokens went
+	// there, else empty.
+	File string
 }
+
+// The two tokens of a login, stored as separate entries.
+const (
+	accessToken  = "access"
+	refreshToken = "refresh"
+)
 
 // Save stores the tokens of a login as separate entries.
 func (m *Manager) Save(res taiga.LoginResult) (Saved, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	user := res.Member.Username
+	username := res.Member.Username
 	entries := []struct{ key, value string }{
-		{m.key(user, "access"), res.Tokens.Access},
-		{m.key(user, "refresh"), res.Tokens.Refresh},
+		{m.key(username, accessToken), res.Tokens.Access},
+		{m.key(username, refreshToken), res.Tokens.Refresh},
 	}
 
 	if !m.keyringDown {
@@ -94,7 +100,7 @@ func (m *Manager) Save(res taiga.LoginResult) (Saved, error) {
 			return Saved{}, err
 		}
 	}
-	return Saved{UsedFile: true, File: m.file.Path()}, nil
+	return Saved{File: m.file.Path()}, nil
 }
 
 // Resume reports whether an unexpired access token is stored for username.
@@ -104,7 +110,7 @@ func (m *Manager) Resume(username string) bool {
 	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	token, err := m.get(m.key(username, "access"))
+	token, err := m.get(m.key(username, accessToken))
 	if err != nil {
 		return false
 	}
@@ -112,37 +118,46 @@ func (m *Manager) Resume(username string) bool {
 	return ok && m.now().Before(exp)
 }
 
-// Logout deletes the tokens of username from the keyring and the file. It
-// tries both stores and reports every failure.
+// Logout deletes the tokens of username from the keyring and every token of
+// the instance from the file. Without a username, as after a lost state.json,
+// only the file can be cleared, because keyring entries cannot be listed. The
+// keyring is given up after its first failure; every failure is reported.
 func (m *Manager) Logout(username string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	var errs []error
-	for _, kind := range []string{"access", "refresh"} {
-		key := m.key(username, kind)
-		if err := m.keyring.Delete(key); err != nil {
-			errs = append(errs, err)
+	if username != "" {
+		for _, kind := range []string{accessToken, refreshToken} {
+			if m.keyringDown {
+				break
+			}
+			if err := m.keyring.Delete(m.key(username, kind)); err != nil {
+				m.keyringDown = true
+				errs = append(errs, err)
+			}
 		}
-		if err := m.file.Delete(key); err != nil {
-			errs = append(errs, err)
-		}
+	}
+	if err := m.file.DeletePrefix(m.host + "/"); err != nil {
+		errs = append(errs, err)
 	}
 	return errors.Join(errs...)
 }
 
-// get reads key from the keyring and falls back to the file when the keyring
-// has no entry or fails.
+// get reads key from the file first: it only holds tokens while the keyring
+// fails, so its entries are newer than any left in the keyring. Then it
+// reads the keyring.
 func (m *Manager) get(key string) (string, error) {
-	if !m.keyringDown {
-		v, err := m.keyring.Get(key)
-		if err == nil {
-			return v, nil
-		}
-		if !errors.Is(err, ErrNotFound) {
-			m.keyringDown = true
-		}
+	if v, err := m.file.Get(key); err == nil {
+		return v, nil
 	}
-	return m.file.Get(key)
+	if m.keyringDown {
+		return "", ErrNotFound
+	}
+	v, err := m.keyring.Get(key)
+	if err != nil && !errors.Is(err, ErrNotFound) {
+		m.keyringDown = true
+	}
+	return v, err
 }
 
 func (m *Manager) key(username, kind string) string {

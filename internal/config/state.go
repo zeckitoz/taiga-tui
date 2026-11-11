@@ -68,9 +68,5 @@ func (f *StateFile) Load() (State, []Warning) {
 
 // Save writes the state atomically.
 func (f *StateFile) Save(st State) error {
-	data, err := json.MarshalIndent(st, "", "  ")
-	if err != nil {
-		return err
-	}
-	return atomicfile.Write(f.path, append(data, '\n'))
+	return atomicfile.WriteJSON(f.path, st)
 }

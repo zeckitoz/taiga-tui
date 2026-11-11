@@ -208,7 +208,7 @@ func TestFailedTokenSaveShowsError(t *testing.T) {
 func TestKeyringFallbackShowsOneTimeHint(t *testing.T) {
 	sess := &fakeSession{
 		result:  taiga.LoginResult{Member: alice},
-		savedTo: session.Saved{UsedFile: true, File: "/home/alice/.config/taiga-tui/credentials"},
+		savedTo: session.Saved{File: "/home/alice/.config/taiga-tui/credentials"},
 	}
 	h := newHarness(t, sess, config.State{Login: "alice"})
 	h.start()
@@ -276,7 +276,7 @@ func TestWarningsAppearInStatusLine(t *testing.T) {
 		Host:     "taiga.example.org",
 		Session:  h.sess,
 		State:    h.state,
-		Warnings: []string{`Unknown key "colors" in config.toml`, "state.json is corrupt, using defaults"},
+		Warnings: []config.Warning{`Unknown key "colors" in config.toml`, "state.json is corrupt, using defaults"},
 		Tick:     noTick,
 	})
 

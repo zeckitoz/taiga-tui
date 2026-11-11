@@ -3,6 +3,7 @@
 package atomicfile
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -39,4 +40,13 @@ func Write(name string, data []byte) (err error) {
 		return fmt.Errorf("replace %s: %w", name, err)
 	}
 	return nil
+}
+
+// WriteJSON writes v as indented JSON with a trailing newline, like Write.
+func WriteJSON(name string, v any) error {
+	data, err := json.MarshalIndent(v, "", "  ")
+	if err != nil {
+		return err
+	}
+	return Write(name, append(data, '\n'))
 }

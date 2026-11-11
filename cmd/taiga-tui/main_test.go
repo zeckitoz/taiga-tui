@@ -11,6 +11,7 @@ import (
 
 	"github.com/zalando/go-keyring"
 
+	"github.com/zeckitoz/taiga-tui/internal/config"
 	"github.com/zeckitoz/taiga-tui/internal/ui"
 	"github.com/zeckitoz/taiga-tui/internal/version"
 )
@@ -120,7 +121,7 @@ func TestStartRunsTUIWithWarningsAndState(t *testing.T) {
 	if got.Host != "taiga-fki.ostfalia.de" {
 		t.Errorf("host %q", got.Host)
 	}
-	if want := []string{`Unknown key "colors" in config.toml`}; !slices.Equal(got.Warnings, want) {
+	if want := []config.Warning{`Unknown key "colors" in config.toml`}; !slices.Equal(got.Warnings, want) {
 		t.Errorf("warnings %q, want %q", got.Warnings, want)
 	}
 	if got.InitialState.Login != "alice@example.org" {
@@ -136,7 +137,7 @@ func TestStartPassesCorruptStateWarning(t *testing.T) {
 
 	runWith(t, map[string]string{"TAIGA_TUI_CONFIG_DIR": dir})
 
-	if want := []string{"state.json is corrupt, using defaults"}; !slices.Equal(got.Warnings, want) {
+	if want := []config.Warning{"state.json is corrupt, using defaults"}; !slices.Equal(got.Warnings, want) {
 		t.Errorf("warnings %q, want %q", got.Warnings, want)
 	}
 }
@@ -189,13 +190,18 @@ func TestLogoutDeletesTokensOnlyAndDoesNotStartTUI(t *testing.T) {
 	}
 }
 
-func TestLogoutWithoutStoredLogin(t *testing.T) {
+func TestLogoutWithoutStateStillClearsCredentialsFile(t *testing.T) {
 	keyring.MockInit()
+	dir := t.TempDir()
+	writeFile(t, dir, "credentials", `{"taiga-fki.ostfalia.de/alice/refresh": "tok"}`)
 
-	res := runWith(t, map[string]string{"TAIGA_TUI_CONFIG_DIR": t.TempDir()}, "logout")
+	res := runWith(t, map[string]string{"TAIGA_TUI_CONFIG_DIR": dir}, "logout")
 
-	if res.code != 0 || res.stdout != "Not logged in to taiga-fki.ostfalia.de.\n" {
+	if res.code != 0 || res.stdout != "Logged out of taiga-fki.ostfalia.de.\n" {
 		t.Errorf("exit %d, stdout %q, stderr %q", res.code, res.stdout, res.stderr)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "credentials")); !errors.Is(err, os.ErrNotExist) {
+		t.Errorf("credentials file still there: %v", err)
 	}
 }
 
