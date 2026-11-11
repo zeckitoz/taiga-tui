@@ -20,8 +20,8 @@
   "client_requirement": false,
   "comment": "",
   "created_date": "2026-11-11T16:04:35.166Z",
-  "description": "",
-  "description_html": "",
+  "description": "redacted",
+  "description_html": "redacted",
   "due_date": null,
   "due_date_reason": "",
   "due_date_status": "not_set",
@@ -41,7 +41,7 @@
   "milestone": 1947,
   "milestone_name": "Sprint 1",
   "milestone_slug": "sprint-1-109",
-  "modified_date": "2026-11-11T16:31:22.411Z",
+  "modified_date": "2026-11-11T17:18:20.283Z",
   "neighbors": {
     "next": {
       "id": 10214,
@@ -94,6 +94,6 @@
   "total_voters": 0,
   "total_watchers": 0,
   "tribe_gig": null,
-  "version": 7,
+  "version": 8,
   "watchers": []
 }
