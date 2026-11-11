@@ -1,0 +1,12 @@
+{
+  "auth_token": "redacted-access-token-1",
+  "big_photo": null,
+  "email": "redacted",
+  "full_name": "Alice Example",
+  "full_name_display": "Alice Example",
+  "id": 42,
+  "is_active": true,
+  "photo": null,
+  "refresh": "redacted-refresh-token-1",
+  "username": "alice"
+}

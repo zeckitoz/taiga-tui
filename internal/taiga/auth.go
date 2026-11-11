@@ -55,34 +55,17 @@ type loginResponse struct {
 
 // Login logs in with a Taiga username or email address and a password.
 func (a *AuthAPI) Login(ctx context.Context, username, password string) (LoginResult, error) {
-	body, err := json.Marshal(loginRequest{Type: "normal", Username: username, Password: password})
+	code, data, err := a.post(ctx, "/auth", loginRequest{Type: "normal", Username: username, Password: password})
 	if err != nil {
 		return LoginResult{}, err
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, a.baseURL+"/api/v1/auth", bytes.NewReader(body))
-	if err != nil {
-		return LoginResult{}, err
-	}
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Accept", "application/json")
-
-	resp, err := a.http.Do(req)
-	if err != nil {
-		return LoginResult{}, transportError(err)
-	}
-	defer func() { _ = resp.Body.Close() }()
-	data, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return LoginResult{}, transportError(err)
-	}
-
 	switch {
-	case resp.StatusCode == http.StatusUnauthorized, resp.StatusCode == http.StatusBadRequest:
+	case code == http.StatusUnauthorized, code == http.StatusBadRequest:
 		return LoginResult{}, ErrInvalidCredentials
-	case resp.StatusCode >= 500:
-		return LoginResult{}, &ServerError{Code: resp.StatusCode}
-	case resp.StatusCode != http.StatusOK:
-		return LoginResult{}, fmt.Errorf("%w: HTTP %d", ErrUnexpected, resp.StatusCode)
+	case code >= 500:
+		return LoginResult{}, &ServerError{Code: code}
+	case code != http.StatusOK:
+		return LoginResult{}, fmt.Errorf("%w: HTTP %d", ErrUnexpected, code)
 	}
 
 	var lr loginResponse
@@ -100,6 +83,68 @@ func (a *AuthAPI) Login(ctx context.Context, username, password string) (LoginRe
 		Member: domain.TeamMember{ID: lr.ID, Username: lr.Username, FullName: name},
 		Tokens: Tokens{Access: lr.AuthToken, Refresh: lr.Refresh},
 	}, nil
+}
+
+type refreshRequest struct {
+	Refresh string `json:"refresh"`
+}
+
+type refreshResponse struct {
+	AuthToken string `json:"auth_token"`
+	Refresh   string `json:"refresh"`
+}
+
+// Refresh trades a refresh token for a new access token and a new refresh
+// token. Taiga rotates refresh tokens: the one passed in is invalid afterwards.
+// A rejected refresh token yields ErrSessionExpired.
+func (a *AuthAPI) Refresh(ctx context.Context, refresh string) (Tokens, error) {
+	code, data, err := a.post(ctx, "/auth/refresh", refreshRequest{Refresh: refresh})
+	if err != nil {
+		return Tokens{}, err
+	}
+	switch {
+	case code == http.StatusUnauthorized, code == http.StatusBadRequest:
+		return Tokens{}, ErrSessionExpired
+	case code >= 500:
+		return Tokens{}, &ServerError{Code: code}
+	case code != http.StatusOK:
+		return Tokens{}, fmt.Errorf("%w: HTTP %d", ErrUnexpected, code)
+	}
+
+	var rr refreshResponse
+	if err := json.Unmarshal(data, &rr); err != nil {
+		return Tokens{}, fmt.Errorf("%w: %w", ErrUnexpected, err)
+	}
+	if rr.AuthToken == "" || rr.Refresh == "" {
+		return Tokens{}, fmt.Errorf("%w: refresh response lacks tokens", ErrUnexpected)
+	}
+	return Tokens{Access: rr.AuthToken, Refresh: rr.Refresh}, nil
+}
+
+// post sends body as JSON to the API path and returns the status code and the
+// response body.
+func (a *AuthAPI) post(ctx context.Context, path string, body any) (int, []byte, error) {
+	payload, err := json.Marshal(body)
+	if err != nil {
+		return 0, nil, err
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, a.baseURL+"/api/v1"+path, bytes.NewReader(payload))
+	if err != nil {
+		return 0, nil, err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "application/json")
+
+	resp, err := a.http.Do(req)
+	if err != nil {
+		return 0, nil, transportError(err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	data, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return 0, nil, transportError(err)
+	}
+	return resp.StatusCode, data, nil
 }
 
 // transportError maps an error from sending a request or reading its response
