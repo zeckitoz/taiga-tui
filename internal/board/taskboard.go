@@ -28,8 +28,8 @@ type Taskboard struct {
 // group is a User Story with its Tasks in Taskboard order. The group of
 // Tasks without User Story has the zero User Story.
 type group struct {
-	story domain.UserStory
-	tasks []domain.Task
+	userStory domain.UserStory
+	tasks     []domain.Task
 }
 
 // item identifies a row that can be selected: a Task, or the User Story
@@ -104,6 +104,7 @@ type StatusCount struct {
 // goes back into TaskLoaded or TaskFailed.
 type LoadTask struct {
 	ID         int64
+	Sprint     int64
 	Generation int
 }
 
@@ -119,12 +120,12 @@ func NewTaskboard(p domain.Project, sprint domain.Sprint, content domain.SprintC
 }
 
 func groupContent(c domain.SprintContent) []group {
-	stories := slices.Clone(c.UserStories)
-	slices.SortStableFunc(stories, func(a, b domain.UserStory) int { return cmp.Compare(a.SprintOrder, b.SprintOrder) })
-	groups := make([]group, len(stories))
+	userStories := slices.Clone(c.UserStories)
+	slices.SortStableFunc(userStories, func(a, b domain.UserStory) int { return cmp.Compare(a.SprintOrder, b.SprintOrder) })
+	groups := make([]group, len(userStories))
 	index := map[int64]int{}
-	for i, s := range stories {
-		groups[i].story = s
+	for i, s := range userStories {
+		groups[i].userStory = s
 		index[s.ID] = i
 	}
 	var rest group
@@ -187,8 +188,8 @@ func (r itemRow) selectable() bool { return r.kind != RowNoTasks }
 func (t Taskboard) items() []itemRow {
 	var rows []itemRow
 	for g, gr := range t.groups {
-		rows = append(rows, itemRow{item: item{id: gr.story.ID}, kind: RowUserStory, group: g})
-		if t.collapsed[gr.story.ID] {
+		rows = append(rows, itemRow{item: item{id: gr.userStory.ID}, kind: RowUserStory, group: g})
+		if t.collapsed[gr.userStory.ID] {
 			continue
 		}
 		if len(gr.tasks) == 0 {
@@ -220,10 +221,10 @@ func (t Taskboard) Rows() []TaskboardRow {
 		case RowUserStory:
 			rows[i] = TaskboardRow{
 				Kind:     RowUserStory,
-				ID:       gr.story.ID,
-				Ref:      gr.story.Ref,
-				Title:    gr.story.Title,
-				Expanded: !t.collapsed[gr.story.ID],
+				ID:       gr.userStory.ID,
+				Ref:      gr.userStory.Ref,
+				Title:    gr.userStory.Title,
+				Expanded: !t.collapsed[gr.userStory.ID],
 				Tasks:    t.progress(gr.tasks),
 			}
 		case RowTask:
@@ -298,7 +299,7 @@ func (t Taskboard) Left() Taskboard {
 		return t
 	}
 	if r := t.items()[i]; r.kind == RowTask {
-		t.cursor = item{id: t.groups[r.group].story.ID}
+		t.cursor = item{id: t.groups[r.group].userStory.ID}
 		return t
 	}
 	return t.setCollapsed(t.cursor.id, true)
@@ -320,15 +321,15 @@ func (t Taskboard) Toggle() Taskboard {
 	return t.setCollapsed(t.cursor.id, !t.collapsed[t.cursor.id])
 }
 
-func (t Taskboard) setCollapsed(storyID int64, collapsed bool) Taskboard {
+func (t Taskboard) setCollapsed(userStoryID int64, collapsed bool) Taskboard {
 	t.collapsed = maps.Clone(t.collapsed) // never share the map with the receiver
 	if t.collapsed == nil {
 		t.collapsed = map[int64]bool{}
 	}
 	if collapsed {
-		t.collapsed[storyID] = true
+		t.collapsed[userStoryID] = true
 	} else {
-		delete(t.collapsed, storyID)
+		delete(t.collapsed, userStoryID)
 	}
 	return t
 }
@@ -350,22 +351,22 @@ func (t Taskboard) Detail() (TaskboardDetail, bool) {
 			Title:          task.Title,
 			Status:         t.taskStatus(task.Status),
 			Assignees:      t.taskAssignees(task),
-			UserStoryRef:   gr.story.Ref,
-			UserStoryTitle: gr.story.Title,
+			UserStoryRef:   gr.userStory.Ref,
+			UserStoryTitle: gr.userStory.Title,
 			Description:    t.descriptions.get(task.ID),
 		}, true
 	}
 	d := TaskboardDetail{
 		Kind:       RowUserStory,
-		ID:         gr.story.ID,
-		Ref:        gr.story.Ref,
-		Title:      gr.story.Title,
+		ID:         gr.userStory.ID,
+		Ref:        gr.userStory.Ref,
+		Title:      gr.userStory.Title,
 		Tasks:      t.progress(gr.tasks),
 		TaskCounts: t.taskCounts(gr.tasks),
 	}
-	if gr.story.ID != 0 {
-		d.Status = statusByID(t.project.UserStoryStatuses, gr.story.Status)
-		d.Assignees = assigneesOf(t.project, t.me, gr.story.Assignees)
+	if gr.userStory.ID != 0 {
+		d.Status = statusByID(t.project.UserStoryStatuses, gr.userStory.Status)
+		d.Assignees = assigneesOf(t.project, t.me, gr.userStory.Assignees)
 	}
 	return d, true
 }
@@ -402,17 +403,24 @@ func (t Taskboard) LoadDetail() (Taskboard, LoadTask, bool) {
 	var gen int
 	var ok bool
 	t.descriptions, gen, ok = t.descriptions.start(id)
-	return t, LoadTask{ID: id, Generation: gen}, ok
+	return t, LoadTask{ID: id, Sprint: t.sprint.ID, Generation: gen}, ok
 }
 
-// TaskLoaded takes the description from the result of load.
+// TaskLoaded takes the description from the result of load, unless it was
+// loaded for another Sprint.
 func (t Taskboard) TaskLoaded(load LoadTask, task domain.Task) Taskboard {
+	if load.Sprint != t.sprint.ID {
+		return t
+	}
 	t.descriptions = t.descriptions.loaded(load.ID, load.Generation, task.Description)
 	return t
 }
 
 // TaskFailed records that load failed with err.
 func (t Taskboard) TaskFailed(load LoadTask, err error) Taskboard {
+	if load.Sprint != t.sprint.ID {
+		return t
+	}
 	t.descriptions = t.descriptions.failed(load.ID, load.Generation, err)
 	return t
 }

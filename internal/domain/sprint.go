@@ -57,11 +57,27 @@ const (
 	Choose
 )
 
+// ChooseReason tells why the Team Member has to choose a Sprint.
+type ChooseReason int
+
+// The reasons for a choice.
+const (
+	// SeveralCurrent means several Sprints contain today.
+	SeveralCurrent ChooseReason = iota
+	// NoneCurrent means no Sprint contains today; the choices are the open
+	// Sprints.
+	NoneCurrent
+	// NoneOpen means no Sprint contains today and none is open; the
+	// choices are all Sprints.
+	NoneOpen
+)
+
 // Resolution is the result of ResolveCurrentSprint.
 type Resolution struct {
 	Kind   ResolutionKind
 	Sprint Sprint
-	// Choices are newest first.
+	// Reason and Choices, newest first, describe a choice.
+	Reason  ChooseReason
 	Choices []Sprint
 }
 
@@ -75,21 +91,28 @@ func ResolveCurrentSprint(sprints []Sprint, today Date, remembered int64) Resolu
 	if len(sprints) == 0 {
 		return Resolution{Kind: None}
 	}
+	reason := SeveralCurrent
 	choices := filter(sprints, func(s Sprint) bool { return s.Contains(today) })
 	if len(choices) == 1 {
 		return Resolution{Kind: One, Sprint: choices[0]}
 	}
 	if len(choices) == 0 {
-		choices = filter(sprints, func(s Sprint) bool { return !s.Closed })
+		reason, choices = NoneCurrent, filter(sprints, func(s Sprint) bool { return !s.Closed })
 	}
 	if len(choices) == 0 {
-		choices = slices.Clone(sprints)
+		reason, choices = NoneOpen, sprints
 	}
 	if i := slices.IndexFunc(choices, func(s Sprint) bool { return s.ID == remembered }); i >= 0 {
 		return Resolution{Kind: One, Sprint: choices[i]}
 	}
-	slices.SortStableFunc(choices, func(a, b Sprint) int { return b.Start.Compare(a.Start) })
-	return Resolution{Kind: Choose, Choices: choices}
+	return Resolution{Kind: Choose, Reason: reason, Choices: NewestFirst(choices)}
+}
+
+// NewestFirst returns the Sprints sorted by start date, the latest first.
+func NewestFirst(sprints []Sprint) []Sprint {
+	sprints = slices.Clone(sprints)
+	slices.SortStableFunc(sprints, func(a, b Sprint) int { return b.Start.Compare(a.Start) })
+	return sprints
 }
 
 func filter(sprints []Sprint, keep func(Sprint) bool) []Sprint {

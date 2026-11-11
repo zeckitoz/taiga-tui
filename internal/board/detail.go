@@ -131,6 +131,7 @@ func (d descriptions) get(id int64) Description {
 // Its result goes back into UserStoryLoaded or UserStoryFailed.
 type LoadUserStory struct {
 	ID         int64
+	ProjectID  int64
 	Generation int
 }
 
@@ -144,17 +145,24 @@ func (k Kanban) LoadDetail() (Kanban, LoadUserStory, bool) {
 	}
 	var gen int
 	k.descriptions, gen, ok = k.descriptions.start(d.ID)
-	return k, LoadUserStory{ID: d.ID, Generation: gen}, ok
+	return k, LoadUserStory{ID: d.ID, ProjectID: k.project.ID, Generation: gen}, ok
 }
 
-// UserStoryLoaded takes the description from the result of load.
+// UserStoryLoaded takes the description from the result of load, unless it
+// was loaded for another project.
 func (k Kanban) UserStoryLoaded(load LoadUserStory, s domain.UserStory) Kanban {
+	if load.ProjectID != k.project.ID {
+		return k
+	}
 	k.descriptions = k.descriptions.loaded(load.ID, load.Generation, s.Description)
 	return k
 }
 
 // UserStoryFailed records that load failed with err.
 func (k Kanban) UserStoryFailed(load LoadUserStory, err error) Kanban {
+	if load.ProjectID != k.project.ID {
+		return k
+	}
 	k.descriptions = k.descriptions.failed(load.ID, load.Generation, err)
 	return k
 }

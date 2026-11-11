@@ -57,7 +57,7 @@ func TestResolveCurrentSprint(t *testing.T) {
 			name:    "several matching Sprints, newest first",
 			sprints: []domain.Sprint{s4, s4b, s3},
 			today:   date(2026, 11, 11),
-			want:    domain.Resolution{Kind: domain.Choose, Choices: []domain.Sprint{s4b, s4}},
+			want:    domain.Resolution{Kind: domain.Choose, Reason: domain.SeveralCurrent, Choices: []domain.Sprint{s4b, s4}},
 		},
 		{
 			name:       "several matching Sprints with the remembered one among them",
@@ -71,13 +71,13 @@ func TestResolveCurrentSprint(t *testing.T) {
 			sprints:    []domain.Sprint{s4, s4b, s3},
 			today:      date(2026, 11, 11),
 			remembered: 3,
-			want:       domain.Resolution{Kind: domain.Choose, Choices: []domain.Sprint{s4b, s4}},
+			want:       domain.Resolution{Kind: domain.Choose, Reason: domain.SeveralCurrent, Choices: []domain.Sprint{s4b, s4}},
 		},
 		{
 			name:    "none matching offers the open Sprints",
 			sprints: []domain.Sprint{s5, s3, s2},
 			today:   date(2026, 11, 5),
-			want:    domain.Resolution{Kind: domain.Choose, Choices: []domain.Sprint{s5, s2}},
+			want:    domain.Resolution{Kind: domain.Choose, Reason: domain.NoneCurrent, Choices: []domain.Sprint{s5, s2}},
 		},
 		{
 			name:       "none matching with the remembered open Sprint",
@@ -90,7 +90,7 @@ func TestResolveCurrentSprint(t *testing.T) {
 			name:    "none matching and none open offers all Sprints, newest first",
 			sprints: []domain.Sprint{s3, s4b},
 			today:   date(2027, 1, 1),
-			want:    domain.Resolution{Kind: domain.Choose, Choices: []domain.Sprint{s4b, s3}},
+			want:    domain.Resolution{Kind: domain.Choose, Reason: domain.NoneOpen, Choices: []domain.Sprint{s4b, s3}},
 		},
 		{
 			name:  "no Sprints",
@@ -125,5 +125,18 @@ func TestSprintContains(t *testing.T) {
 	}
 	if s4.Contains(date(2026, 11, 2)) || s4.Contains(date(2026, 11, 17)) {
 		t.Error("day outside contained")
+	}
+}
+
+func TestNewestFirstSortsByStartWithoutChangingInput(t *testing.T) {
+	in := []domain.Sprint{s2, s5, s3}
+
+	got := domain.NewestFirst(in)
+
+	if want := []domain.Sprint{s5, s3, s2}; !reflect.DeepEqual(got, want) {
+		t.Errorf("got %v", got)
+	}
+	if in[0] != s2 {
+		t.Error("input changed")
 	}
 }

@@ -331,7 +331,7 @@ func deref(p *int64) int64 {
 // ID, in the order Taiga sends them and without descriptions.
 func (c *Client) Taskboard(ctx context.Context, sprintID int64) (domain.SprintContent, error) {
 	q := url.Values{"milestone": {strconv.FormatInt(sprintID, 10)}}
-	stories, err := c.userStories(ctx, q)
+	userStories, err := c.userStories(ctx, q)
 	if err != nil {
 		return domain.SprintContent{}, err
 	}
@@ -339,7 +339,7 @@ func (c *Client) Taskboard(ctx context.Context, sprintID int64) (domain.SprintCo
 	if err := c.get(ctx, "/tasks", q, &dtos); err != nil {
 		return domain.SprintContent{}, err
 	}
-	content := domain.SprintContent{UserStories: stories, Tasks: make([]domain.Task, len(dtos))}
+	content := domain.SprintContent{UserStories: userStories, Tasks: make([]domain.Task, len(dtos))}
 	for i, d := range dtos {
 		content.Tasks[i] = d.domain()
 	}

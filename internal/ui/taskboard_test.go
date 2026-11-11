@@ -9,6 +9,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
 
+	"github.com/zeckitoz/taiga-tui/internal/board"
 	"github.com/zeckitoz/taiga-tui/internal/config"
 	"github.com/zeckitoz/taiga-tui/internal/domain"
 	"github.com/zeckitoz/taiga-tui/internal/taiga"
@@ -30,9 +31,15 @@ func onTaskboard(t *testing.T, w, h int) *harness {
 	return hs
 }
 
+// shownTaskboard returns the Taskboard shown, or the zero Taskboard.
+func shownTaskboard(h *harness) board.Taskboard {
+	tb, _ := h.app.sprints.Taskboard()
+	return tb
+}
+
 // selectedTaskboardRef returns the ref of the selected Taskboard row.
 func selectedTaskboardRef(h *harness) int {
-	for _, r := range h.app.taskboard.Rows() {
+	for _, r := range shownTaskboard(h).Rows() {
 		if r.Selected {
 			return r.Ref
 		}
@@ -224,7 +231,7 @@ func TestTaskboardLoadFailureShowsErrorPageAndRetries(t *testing.T) {
 	}
 	h.key("r")
 
-	if h.app.screen != screenBoard || h.app.taskboard.Empty() {
+	if h.app.screen != screenBoard || shownTaskboard(h).Empty() {
 		t.Errorf("retry failed:\n%s", h.plainView())
 	}
 }
@@ -242,7 +249,7 @@ func TestSprintsLoadFailureShowsErrorPageAndRetries(t *testing.T) {
 	}
 	h.key("r")
 
-	if h.app.screen != screenBoard || h.app.taskboard.Sprint().ID != sprint4.ID {
+	if h.app.screen != screenBoard || shownTaskboard(h).Sprint().ID != sprint4.ID {
 		t.Errorf("retry failed:\n%s", h.plainView())
 	}
 }
@@ -313,7 +320,7 @@ func TestProjectWithoutSprintsShowsHint(t *testing.T) {
 
 	h.taiga.SetSprints(mobileApp.ID, sprint4)
 	h.key("r")
-	if h.app.taskboard.Sprint().ID != sprint4.ID {
+	if shownTaskboard(h).Sprint().ID != sprint4.ID {
 		t.Errorf("refresh did not load the new Sprint:\n%s", h.plainView())
 	}
 }
@@ -346,7 +353,7 @@ func TestSeveralCurrentSprintsOfferPickerWithClosedMarked(t *testing.T) {
 	h.key("down")
 	h.key("enter")
 
-	if h.app.screen != screenBoard || h.app.taskboard.Sprint().ID != sprint4.ID {
+	if h.app.screen != screenBoard || shownTaskboard(h).Sprint().ID != sprint4.ID {
 		t.Errorf("did not open Sprint 4:\n%s", h.plainView())
 	}
 	if got := h.state.saved.Sprints; !maps.Equal(got, map[int64]int64{webShop.ID: sprint4.ID}) {
@@ -364,7 +371,7 @@ func TestRememberedSprintIsOpenedWithoutPicker(t *testing.T) {
 
 	h.start()
 
-	if h.app.screen != screenBoard || h.app.taskboard.Sprint().ID != sprint4.ID {
+	if h.app.screen != screenBoard || shownTaskboard(h).Sprint().ID != sprint4.ID {
 		t.Errorf("screen %v:\n%s", h.app.screen, h.plainView())
 	}
 }
@@ -419,8 +426,8 @@ func TestColonOnTaskboardSwitchesToAnySprint(t *testing.T) {
 	h.key("down")
 	h.key("enter")
 
-	if h.app.taskboard.Sprint().ID != sprint3.ID {
-		t.Errorf("Sprint %+v", h.app.taskboard.Sprint())
+	if shownTaskboard(h).Sprint().ID != sprint3.ID {
+		t.Errorf("Sprint %+v", shownTaskboard(h).Sprint())
 	}
 	if got := h.state.saved.Sprints[webShop.ID]; got != sprint3.ID {
 		t.Errorf("remembered %d", got)
@@ -433,7 +440,7 @@ func TestEscInSprintPickerReturnsToTaskboard(t *testing.T) {
 
 	h.key("esc")
 
-	if h.quit || h.app.screen != screenBoard || h.app.taskboard.Sprint().ID != sprint4.ID {
+	if h.quit || h.app.screen != screenBoard || shownTaskboard(h).Sprint().ID != sprint4.ID {
 		t.Errorf("quit %v, screen %v", h.quit, h.app.screen)
 	}
 }

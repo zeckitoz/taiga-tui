@@ -165,7 +165,7 @@ func taskList(rows []board.TaskboardRow, top, w, h int) string {
 		var line string
 		switch r.Kind {
 		case board.RowUserStory:
-			line = storyRow(r, w)
+			line = userStoryRow(r, w)
 		case board.RowTask:
 			line = taskRow(r, cols, w)
 		case board.RowNoTasks:
@@ -183,9 +183,9 @@ func taskList(rows []board.TaskboardRow, top, w, h int) string {
 	return strings.Join(lines, "\n")
 }
 
-// storyRow renders the heading of a group: the collapse arrow, ref and
+// userStoryRow renders the heading of a group: the collapse arrow, ref and
 // title in bold accent color and the task progress on the right.
-func storyRow(r board.TaskboardRow, w int) string {
+func userStoryRow(r board.TaskboardRow, w int) string {
 	arrow := "▾"
 	if !r.Expanded {
 		arrow = "▸"
@@ -259,11 +259,11 @@ func taskboardDetail(d board.TaskboardDetail, w int, compact bool) []string {
 	if d.Kind == board.RowTask {
 		lines = append(lines, field("Status", statusLabel(d.Status), w)...)
 		lines = append(lines, field("Assignee", assigneeNames(d.Assignees), w)...)
-		story := faintStyle.Render("none")
+		userStory := faintStyle.Render("none")
 		if d.UserStoryRef != 0 {
-			story = ref(d.UserStoryRef) + " " + plainText(d.UserStoryTitle)
+			userStory = ref(d.UserStoryRef) + " " + plainText(d.UserStoryTitle)
 		}
-		lines = append(lines, field("User Story", story, w)...)
+		lines = append(lines, field("User Story", userStory, w)...)
 		lines = append(lines, "")
 		return append(lines, descriptionLines(d.Description, w)...)
 	}
