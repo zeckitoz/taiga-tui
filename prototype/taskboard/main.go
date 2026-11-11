@@ -42,6 +42,8 @@ type model struct {
 	bK        int
 	cIdx      int
 	collapsed map[int]bool // Story-Ref (-1 = ohne User Story)
+	hidePane  bool         // Variante C: Detailspalte ausgeblendet (d)
+	usStyle   int          // Variante C: Darstellung der User-Story-Zeilen (u)
 	sc        *scroll
 }
 
@@ -234,9 +236,13 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "enter":
 			if m.variant == 2 && m.cOnStory() {
 				m.cToggle()
-			} else if m.sel != 0 && !(m.variant == 2 && m.w >= cPaneMin) {
+			} else if m.sel != 0 && !(m.variant == 2 && m.cPaneVisible()) {
 				m.detail = true
 			}
+		case "d":
+			m.hidePane = !m.hidePane
+		case "u":
+			m.usStyle = (m.usStyle + 1) % len(usStyleNames)
 		case " ":
 			if m.variant == 2 {
 				m.cToggle()
@@ -375,8 +381,15 @@ func (m model) switcher() string {
 	if m.many {
 		many = "an"
 	}
-	l := pill.Render(" PROTOTYP ") + bar.Render(" ◀ shift+tab  "+variantNames[m.variant]+"  tab ▶ ")
+	name := variantNames[m.variant]
+	if m.variant == 2 {
+		name += "  ·  u User Story: " + usStyleNames[m.usStyle] + "  ·  d Detail"
+	}
+	l := pill.Render(" PROTOTYP ") + bar.Render(" ◀ shift+tab  "+name+"  tab ▶ ")
 	r := bar.Render(fmt.Sprintf(" %d×%d · m nur meine · S 8 Status: %s · ⏎ Detail · q ", m.w, m.h, many))
+	if m.w-lipgloss.Width(l)-lipgloss.Width(r) < 0 {
+		r = bar.Render(fmt.Sprintf(" %d×%d · m meine · S Status · ⏎ · q ", m.w, m.h))
+	}
 	if m.w < 120 {
 		l = pill.Render(" PROTOTYP ") + bar.Render(" ⇥ "+variantNames[m.variant][:1]+" ")
 		r = bar.Render(fmt.Sprintf(" %d×%d · m meine · S Status · ⏎ · q ", m.w, m.h))

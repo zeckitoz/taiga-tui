@@ -8,9 +8,14 @@ import (
 	"strings"
 
 	"charm.land/lipgloss/v2"
+	"github.com/charmbracelet/x/ansi"
 )
 
 const cPaneMin = 110
+
+var usStyleNames = []string{"Band", "Akzentfarbe + Abstand", "Trennlinie"}
+
+func (m model) cPaneVisible() bool { return !m.hidePane && m.w >= cPaneMin }
 
 type cItem struct {
 	row  Row
@@ -96,7 +101,7 @@ func (m model) viewC(h int) string {
 	rows := m.rows()
 	items := m.cItems(rows)
 	W := m.w
-	pane := W >= cPaneMin
+	pane := m.cPaneVisible()
 	listW := W
 	paneW := 0
 	if pane {
@@ -109,8 +114,15 @@ func (m model) viewC(h int) string {
 	}
 
 	var lines []string
+	focus := 0
 	for i, it := range items {
 		sel := i == m.cIdx
+		if sel {
+			focus = len(lines)
+			if it.task == nil && m.usStyle == 1 && i > 0 {
+				focus++
+			}
+		}
 		if it.task == nil {
 			r := it.row
 			arrow := "▾"
@@ -131,11 +143,7 @@ func (m model) viewC(h int) string {
 			}
 			t := fmt.Sprintf("%s %s", arrow, r.title())
 			tw := listW - lipgloss.Width(bar)
-			if sel {
-				lines = append(lines, selStyle.Render(fit(t, tw-1))+" "+bar)
-			} else {
-				lines = append(lines, bold.Render(fit(t, tw-1))+" "+bar)
-			}
+			lines = append(lines, m.cStoryLine(t, bar, tw, listW, sel, i > 0)...)
 			continue
 		}
 		x := *it.task
@@ -161,7 +169,7 @@ func (m model) viewC(h int) string {
 	if len(items) == 0 {
 		lines = append(lines, faint.Render("  Keine Tasks für diesen Filter."))
 	}
-	list := m.window(lines, m.cIdx, h)
+	list := m.window(lines, focus, h)
 	for i := range list {
 		list[i] = fit(list[i], listW)
 	}
@@ -213,4 +221,34 @@ func (m model) cPane(w, h int) string {
 		"",
 		lipgloss.NewStyle().Width(w-2).Render(desc),
 	))
+}
+
+// cStoryLine rendert die User-Story-Zeile im gewählten Stil (Taste u).
+func (m model) cStoryLine(t, bar string, tw, listW int, sel, notFirst bool) []string {
+	switch m.usStyle {
+	case 0: // Band: farbiger Hintergrund über die volle Breite, fett
+		if sel {
+			return []string{selStyle.Bold(true).Render(fit(t, tw-1)) + " " + bar}
+		}
+		return []string{bandSt.Bold(true).Render(fit(t, tw-1)+" ") + bandSt.Render(fit(ansi.Strip(bar), listW-tw))}
+	case 1: // Akzentfarbe + Leerzeile vor jeder User Story
+		acc := lipgloss.NewStyle().Foreground(lipgloss.Color("#FFD866")).Bold(true)
+		line := acc.Render(fit(t, tw-1)) + " " + bar
+		if sel {
+			line = selStyle.Bold(true).Render(fit(t, tw-1)) + " " + bar
+		}
+		if notFirst {
+			return []string{"", line}
+		}
+		return []string{line}
+	default: // Trennlinie: Titel fett, Rest der Zeile als Linie
+		tt := fit(t, min(lipgloss.Width(t)+1, tw-1))
+		if sel {
+			tt = selStyle.Bold(true).Render(tt)
+		} else {
+			tt = bold.Render(tt)
+		}
+		rule := faint.Render(strings.Repeat("─", max(0, tw-1-lipgloss.Width(tt))))
+		return []string{tt + rule + " " + bar}
+	}
 }

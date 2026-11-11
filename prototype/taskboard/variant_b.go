@@ -6,7 +6,6 @@ package main
 import (
 	"fmt"
 	"strings"
-
 )
 
 func (m *model) bClamp(rows []Row) {
