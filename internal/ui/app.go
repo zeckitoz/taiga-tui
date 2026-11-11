@@ -33,6 +33,7 @@ type Taiga interface {
 	Projects(ctx context.Context, memberID int64) ([]domain.ProjectSummary, error)
 	Project(ctx context.Context, slug string) (domain.Project, error)
 	Kanban(ctx context.Context, projectID int64) ([]domain.UserStory, error)
+	UserStory(ctx context.Context, id int64) (domain.UserStory, error)
 }
 
 // StateStore persists state.json.
@@ -106,6 +107,11 @@ type (
 		stories   []domain.UserStory
 		err       error
 	}
+	userStoryLoadedMsg struct {
+		load  board.LoadUserStory
+		story domain.UserStory
+		err   error
+	}
 )
 
 // statusMsg is one entry of the status line.
@@ -144,6 +150,9 @@ type App struct {
 	// hasKanban is set once the Kanban Board of project is loaded.
 	hasKanban bool
 	kanbanTop int
+	// detailClosed hides the detail view, which is open by default. It is
+	// UI state only and never persisted.
+	detailClosed bool
 }
 
 // New returns the App. It starts by looking for a stored session.
@@ -235,6 +244,15 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a.projectLoaded(msg.project)
 	case kanbanLoadedMsg:
 		return a.kanbanLoaded(msg)
+	case userStoryLoadedMsg:
+		// A result for a User Story of another project or an earlier load
+		// finds no request in the board and is dropped there.
+		if msg.err != nil {
+			a.kanban = a.kanban.UserStoryFailed(msg.load, msg.err)
+		} else {
+			a.kanban = a.kanban.UserStoryLoaded(msg.load, msg.story)
+		}
+		return a, nil
 	}
 
 	switch a.screen {
@@ -470,7 +488,25 @@ func (a App) kanbanLoaded(msg kanbanLoadedMsg) (tea.Model, tea.Cmd) {
 	}
 	a.screen = screenBoard
 	a.scrollKanban()
-	return a, nil
+	return a.loadDetail()
+}
+
+// loadDetail loads the description of the selected User Story if the
+// detail view shows it and it is not loaded yet.
+func (a App) loadDetail() (App, tea.Cmd) {
+	if a.detailClosed || !a.hasKanban {
+		return a, nil
+	}
+	k, load, ok := a.kanban.LoadDetail()
+	if !ok {
+		return a, nil
+	}
+	a.kanban = k
+	api := a.deps.Taiga
+	return a, func() tea.Msg {
+		s, err := api.UserStory(context.Background(), load.ID)
+		return userStoryLoadedMsg{load: load, story: s, err: err}
+	}
 }
 
 func (a App) updatePicker(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -522,15 +558,18 @@ func (a App) updateBoard(msg tea.Msg) (tea.Model, tea.Cmd) {
 		a.kanban = a.kanban.CursorUp()
 	case "down", "j":
 		a.kanban = a.kanban.CursorDown()
+	case "enter":
+		a.detailClosed = !a.detailClosed
 	}
 	a.scrollKanban()
-	return a, nil
+	return a.loadDetail()
 }
 
 // scrollKanban keeps the selected User Story visible.
 func (a *App) scrollKanban() {
 	n := len(a.kanban.Rows())
-	a.kanbanTop = scrollTop(a.kanbanTop, a.kanban.SelectedIndex(), n, a.bodyHeight()-kanbanChromeLines)
+	l := layoutKanban(a.width, a.bodyHeight()-kanbanChromeLines, !a.detailClosed)
+	a.kanbanTop = scrollTop(a.kanbanTop, a.kanban.SelectedIndex(), n, l.listH)
 }
 
 func (a App) pickerListHeight() int { return a.bodyHeight() - pickerChromeLines }
@@ -610,7 +649,7 @@ func (a App) boardBody() string {
 	if !a.project.KanbanEnabled {
 		return centered(a.width, h, faintStyle.Render("Kanban is disabled in "+a.project.Name))
 	}
-	return renderKanban(a.kanban, a.kanbanTop, a.width, h)
+	return renderKanban(a.kanban, a.kanbanTop, a.width, h, !a.detailClosed)
 }
 
 func (a App) boardKeys() string {

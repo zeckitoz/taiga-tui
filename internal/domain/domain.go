@@ -63,11 +63,16 @@ type UserStory struct {
 	Title string
 	// Status is the ID of the User Story's Status.
 	Status int64
+	// SprintName names the User Story's Sprint, empty if it is in none.
+	SprintName string
 	// Assignees holds Team Member IDs, the main Assignee first.
 	Assignees   []int64
 	KanbanOrder int64
 	Version     int
 	Tasks       TaskProgress
+	// Description is Taiga's Markdown text. Lists of User Stories leave it
+	// empty; only a single User Story loaded on its own carries it.
+	Description string
 }
 
 // AssignedTo reports whether the Team Member with the given ID is an Assignee.

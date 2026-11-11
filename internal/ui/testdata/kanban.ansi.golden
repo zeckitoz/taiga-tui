@@ -4,9 +4,9 @@
 [7m   #15  Product search                                                       --     no tasks        [m|
  [1;38;5;221m▍[m #12  Checkout with credit card                                            BK [1;38;5;221mAE[m  [38;5;149m▰[m[2m▱ 1/2[m          |
    #108 Wishlist for logged-in customers that is shared with friends and f…  CM     [38;5;149m▰▰▰[m[2m▱▱▱▱▱▱▱ 4/14[m |
-|
-|
-|
-|
-|
- [2m←/→ status · ↑/↓ move · r refresh · q quit[m                                                         |
+[2m────────────────────────────────────────────────────────────────────────────────────────────────────[m|
+ [1m#15 Product search[m                                                                                 |
+                                                                                                    |
+ [2mStatus     [m[38;5;60m● New[m                                                                                   |
+ [2m…[m                                                                                                  |
+ [2m←/→ status · ↑/↓ move · enter detail · r refresh · q quit[m                                          |

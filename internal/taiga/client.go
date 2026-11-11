@@ -159,6 +159,8 @@ type userStoryDTO struct {
 	Ref           int     `json:"ref"`
 	Subject       string  `json:"subject"`
 	Status        int64   `json:"status"`
+	MilestoneName *string `json:"milestone_name"`
+	Description   string  `json:"description"`
 	AssignedTo    *int64  `json:"assigned_to"`
 	AssignedUsers []int64 `json:"assigned_users"`
 	KanbanOrder   int64   `json:"kanban_order"`
@@ -176,6 +178,10 @@ func (u userStoryDTO) domain() domain.UserStory {
 		Status:      u.Status,
 		KanbanOrder: u.KanbanOrder,
 		Version:     u.Version,
+		Description: u.Description,
+	}
+	if u.MilestoneName != nil {
+		s.SprintName = *u.MilestoneName
 	}
 	// assigned_users already contains assigned_to, the main Assignee.
 	if u.AssignedTo != nil {
@@ -212,6 +218,16 @@ func (c *Client) Kanban(ctx context.Context, projectID int64) ([]domain.UserStor
 		out[i] = d.domain()
 	}
 	return out, nil
+}
+
+// UserStory returns the User Story with the given ID, including its
+// description, which the lists leave out.
+func (c *Client) UserStory(ctx context.Context, id int64) (domain.UserStory, error) {
+	var d userStoryDTO
+	if err := c.get(ctx, "/userstories/"+strconv.FormatInt(id, 10), nil, &d); err != nil {
+		return domain.UserStory{}, err
+	}
+	return d.domain(), nil
 }
 
 // get sends an authenticated GET to the API path and decodes the JSON

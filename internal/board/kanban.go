@@ -24,6 +24,11 @@ type Kanban struct {
 	tab      int
 	// cursor remembers the selected User Story ID per Status ID.
 	cursor map[int64]int64
+	// generation counts the loads of the User Stories; results of
+	// description loads from an earlier generation are dropped.
+	generation int
+	// descriptions holds the descriptions by User Story ID.
+	descriptions map[int64]description
 }
 
 // Tab is one Status tab.
@@ -57,7 +62,7 @@ type Assignee struct {
 // NewKanban returns the Kanban Board of p with the given User Stories, seen
 // by the Team Member with ID me. The first tab is active.
 func NewKanban(p domain.Project, stories []domain.UserStory, me int64) Kanban {
-	k := Kanban{project: p, me: me, cursor: map[int64]int64{}}
+	k := Kanban{project: p, me: me, cursor: map[int64]int64{}, descriptions: map[int64]description{}}
 	for _, s := range p.UserStoryStatuses {
 		if !s.Archived {
 			k.statuses = append(k.statuses, s)
@@ -67,9 +72,11 @@ func NewKanban(p domain.Project, stories []domain.UserStory, me int64) Kanban {
 }
 
 // Reload replaces the User Stories, keeping the active tab and the selected
-// User Story if it is still in that tab.
+// User Story if it is still in that tab. Descriptions count as outdated:
+// they stay visible until LoadDetail has loaded them again.
 func (k Kanban) Reload(stories []domain.UserStory) Kanban {
 	k.cursor = maps.Clone(k.cursor) // never share the map with the receiver
+	k.generation++
 	return k.withStories(stories)
 }
 

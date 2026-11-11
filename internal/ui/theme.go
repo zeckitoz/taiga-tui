@@ -45,7 +45,12 @@ func tabStyle(hex string, active bool) lipgloss.Style {
 	if active {
 		return lipgloss.NewStyle().Bold(true).Background(c).Foreground(textOn(c))
 	}
-	return lipgloss.NewStyle().Foreground(c)
+	return statusStyle(hex)
+}
+
+// statusStyle writes text in the color of a Status.
+func statusStyle(hex string) lipgloss.Style {
+	return lipgloss.NewStyle().Foreground(statusColor(hex))
 }
 
 // statusColor returns Taiga's color of a Status, which is "#rrggbb" or

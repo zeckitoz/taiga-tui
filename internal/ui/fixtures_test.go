@@ -26,9 +26,17 @@ var webShop = domain.Project{
 }
 
 var webShopStories = []domain.UserStory{
-	{ID: 501, Ref: 12, Title: "Checkout with credit card", Status: 101, KanbanOrder: 20, Assignees: []int64{43, 42}, Tasks: domain.TaskProgress{Done: 1, Total: 2}},
+	{
+		ID: 501, Ref: 12, Title: "Checkout with credit card", Status: 101, KanbanOrder: 20, SprintName: "Sprint 4",
+		Assignees: []int64{43, 42}, Tasks: domain.TaskProgress{Done: 1, Total: 2},
+		Description: "Customers pay with Visa or Mastercard at the end of the checkout.\r\n\r\n- 3-D Secure is required\n- No PayPal yet\n",
+	},
 	{ID: 502, Ref: 15, Title: "Product search", Status: 101, KanbanOrder: 10},
-	{ID: 503, Ref: 108, Title: "Wishlist for logged-in customers that is shared with friends and family", Status: 101, KanbanOrder: 30, Assignees: []int64{44}, Tasks: domain.TaskProgress{Total: 14, Done: 4}},
+	{
+		ID: 503, Ref: 108, Title: "Wishlist for logged-in customers that is shared with friends and family", Status: 101, KanbanOrder: 30,
+		SprintName: "Sprint 5", Assignees: []int64{44}, Tasks: domain.TaskProgress{Total: 14, Done: 4},
+		Description: "A wishlist keeps products for later.\n\nCustomers share it by link.\nFriends see prices but not the customer's address.\nThe list survives logging out.\nIt holds at most 100 products.\nShared lists are read-only.\nOwners can rename a list.\nOwners can delete a list.\nDeleted lists are gone for friends too.",
+	},
 	{ID: 504, Ref: 21, Title: "Order history", Status: 103, KanbanOrder: 10, Assignees: []int64{42}, Tasks: domain.TaskProgress{Done: 3, Total: 3}},
 	{ID: 505, Ref: 3, Title: "Login", Status: 105, KanbanOrder: 10, Assignees: []int64{43}},
 	{ID: 506, Ref: 1, Title: "Old prototype", Status: 106, KanbanOrder: 10},

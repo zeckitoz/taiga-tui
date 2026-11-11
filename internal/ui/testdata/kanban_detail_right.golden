@@ -1,0 +1,40 @@
+ Web Shop › Kanban Board                                                                                  Alice Example |
+ ● New 3 │ ● Ready 0 │ ● In progress 1/3 │ ● Ready for test 0 │ ● Done 1                                                |
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────|
+   #15  Product search                          --     no tasks        │ #12 Checkout with credit card                  |
+ ▍ #12  Checkout with credit card               BK AE  ▰▱ 1/2          │                                                |
+   #108 Wishlist for logged-in customers that…  CM     ▰▰▰▱▱▱▱▱▱▱ 4/14 │ Status     ● New                               |
+                                                                       │ Assignees  Bea Koch, Alice Example (you)       |
+                                                                       │ Sprint     Sprint 4                            |
+                                                                       │ Tasks      ▰▱ 1/2                              |
+                                                                       │                                                |
+                                                                       │ Customers pay with Visa or Mastercard at the   |
+                                                                       │ end of the checkout.                           |
+                                                                       │                                                |
+                                                                       │ - 3-D Secure is required                       |
+                                                                       │ - No PayPal yet                                |
+                                                                       │                                                |
+                                                                       │                                                |
+                                                                       │                                                |
+                                                                       │                                                |
+                                                                       │                                                |
+                                                                       │                                                |
+                                                                       │                                                |
+                                                                       │                                                |
+                                                                       │                                                |
+                                                                       │                                                |
+                                                                       │                                                |
+                                                                       │                                                |
+                                                                       │                                                |
+                                                                       │                                                |
+                                                                       │                                                |
+                                                                       │                                                |
+                                                                       │                                                |
+                                                                       │                                                |
+                                                                       │                                                |
+                                                                       │                                                |
+                                                                       │                                                |
+                                                                       │                                                |
+                                                                       │                                                |
+                                                                       │                                                |
+ ←/→ status · ↑/↓ move · enter detail · r refresh · q quit                                                              |
