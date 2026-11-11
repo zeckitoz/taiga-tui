@@ -178,6 +178,9 @@ type App struct {
 	sprints      board.Sprints
 	taskboardTop int
 	sprintPicker picker
+	// sprintPickerBack is the board esc in the Sprint picker returns to,
+	// empty if esc ends the app.
+	sprintPickerBack config.Board
 	// detailOpen shows the detail view, which is open by default. It is UI
 	// state only and never persisted.
 	detailOpen bool
@@ -546,6 +549,11 @@ func (a App) wantedBoard() config.Board {
 // openBoard shows the board b of the project and remembers it as the last
 // used board. A board loaded before stays visible while it refreshes.
 func (a App) openBoard(b config.Board) (App, tea.Cmd) {
+	// A board left for the Taskboard is where the Sprint picker goes back.
+	a.sprintPickerBack = ""
+	if a.screen == screenBoard && a.board != b {
+		a.sprintPickerBack = a.board
+	}
 	a.board = b
 	if a.state.LastBoard != b {
 		a.state.LastBoard = b
@@ -658,6 +666,9 @@ func (a App) updateSprintPicker(msg tea.Msg) (tea.Model, tea.Cmd) {
 	action, cmd := a.sprintPicker.update(msg, a.pickerListHeight())
 	switch action {
 	case pickerQuit:
+		if back := a.sprintPickerBack; back != "" {
+			return a.openBoard(back)
+		}
 		return a, tea.Quit
 	case pickerChoose:
 		id, _ := a.sprintPicker.chosen()
@@ -927,7 +938,7 @@ func (a App) openPalette() (App, tea.Cmd) {
 	a.palette = newPalette(a.paletteEntries())
 	a.palette.setWidth(a.width)
 	a.palette.scroll(a.paletteListHeight())
-	if a.project.BacklogEnabled && !a.sprints.Listed() && a.board != config.BoardTaskboard {
+	if a.hasTaskboard() && !a.sprints.Listed() && a.board != config.BoardTaskboard {
 		return a.loadSprints()
 	}
 	return a, nil
@@ -936,7 +947,7 @@ func (a App) openPalette() (App, tea.Cmd) {
 // paletteEntries lists the boards, the Sprints and the projects to go to.
 func (a App) paletteEntries() []paletteEntry {
 	var es []paletteEntry
-	for _, b := range []config.Board{config.BoardTaskboard, config.BoardKanban} {
+	for _, b := range allBoards {
 		ops := boardOps(b)
 		e := paletteEntry{kind: entryBoard, board: b, label: "Go to " + ops.name, current: b == a.board}
 		if !ops.enabled(a.project.ProjectSummary) {
@@ -945,7 +956,7 @@ func (a App) paletteEntries() []paletteEntry {
 		}
 		es = append(es, e)
 	}
-	if a.project.BacklogEnabled {
+	if a.hasTaskboard() {
 		sprints := domain.NewestFirst(a.sprints.List())
 		tb, shown := a.sprints.Taskboard()
 		for i, note := range sprintNotes(sprints, a.today()) {
@@ -974,7 +985,7 @@ func (a App) paletteEntries() []paletteEntry {
 // boardNames lists the boards enabled in p.
 func boardNames(p domain.ProjectSummary) string {
 	var names []string
-	for _, b := range []config.Board{config.BoardTaskboard, config.BoardKanban} {
+	for _, b := range allBoards {
 		if ops := boardOps(b); ops.enabled(p) {
 			names = append(names, ops.name)
 		}
@@ -982,6 +993,12 @@ func boardNames(p domain.ProjectSummary) string {
 	return strings.Join(names, " · ")
 }
 
+// hasTaskboard reports whether the project has the Taskboard enabled.
+func (a App) hasTaskboard() bool {
+	return boardOps(config.BoardTaskboard).enabled(a.project.ProjectSummary)
+}
+
+// updatePalette handles msg while the palette is open.
 func (a App) updatePalette(msg tea.Msg) (tea.Model, tea.Cmd) {
 	action, cmd := a.palette.update(msg, a.paletteListHeight())
 	switch action {
@@ -1005,6 +1022,7 @@ func (a App) updatePalette(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return a, cmd
 }
 
+// paletteListHeight is the height of the list of the palette.
 func (a App) paletteListHeight() int {
 	_, listH := paletteBox(a.width, a.bodyHeight())
 	return listH
@@ -1044,6 +1062,9 @@ func (a App) footerLines() []string {
 	case screenPicker:
 		return []string{a.pickerFooter()}
 	case screenSprintPicker:
+		if a.sprintPickerBack != "" {
+			return []string{footer(strings.Replace(pickerKeys, "esc quit", "esc back", 1), a.width)}
+		}
 		return []string{footer(pickerKeys, a.width)}
 	case screenBoard:
 		switch {

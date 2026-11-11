@@ -63,6 +63,9 @@ func boardOps(b config.Board) boardView {
 	}
 }
 
+// allBoards are the boards in the order the palette offers them.
+var allBoards = []config.Board{config.BoardTaskboard, config.BoardKanban}
+
 // otherBoard returns the board that is not b.
 func otherBoard(b config.Board) config.Board {
 	if b == config.BoardTaskboard {

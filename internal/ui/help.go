@@ -17,12 +17,14 @@ var commonHelp = []keyHelp{
 	{"q ctrl+c", "quit"},
 }
 
+// kanbanHelp are the keys of the Kanban Board.
 var kanbanHelp = []keyHelp{
 	{"←/→ h/l", "previous / next status"},
 	{"↑/↓ j/k", "move"},
 	{"enter", "show / hide detail"},
 }
 
+// taskboardHelp are the keys of the Taskboard.
 var taskboardHelp = []keyHelp{
 	{"↑/↓ j/k", "move"},
 	{"←/→ h/l", "fold / unfold user story"},

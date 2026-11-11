@@ -244,3 +244,48 @@ func TestFailedSprintLoadForPaletteKeepsKanban(t *testing.T) {
 		t.Errorf("screen %v:\n%s", h.app.screen, view)
 	}
 }
+
+func TestSprintsArrivingKeepSelectedEntry(t *testing.T) {
+	h := onKanban(t, 100, 24)
+	release := h.taiga.Hold("Sprints")
+	cmd := h.sendOnly(keyMsg(":"))
+	h.key("down")
+	h.key("down") // Project: mobile app, after Go to Kanban Board and Archive
+
+	release()
+	h.runCmd(cmd)
+
+	if e, _ := h.app.palette.chosen(); e.label != "Project: mobile app" {
+		t.Errorf("selected %q", e.label)
+	}
+}
+
+func TestEscInSprintPickerFromPaletteReturnsToBoard(t *testing.T) {
+	api := newFake()
+	api.SetSprints(webShop.ID, sprint5, sprint3) // no Current Sprint
+	h := resumed(t, api, aliceState(webShop.ID))
+	h.start()
+
+	h.key(":")
+	h.typeText("taskboard")
+	h.key("enter")
+	if h.app.screen != screenSprintPicker {
+		t.Fatalf("screen %v", h.app.screen)
+	}
+	h.key("esc")
+
+	if h.quit || h.app.screen != screenBoard || h.app.board != config.BoardKanban || h.state.saved.LastBoard != config.BoardKanban {
+		t.Errorf("quit %v, screen %v, board %q, saved %q", h.quit, h.app.screen, h.app.board, h.state.saved.LastBoard)
+	}
+}
+
+func TestDisabledBoardHintShowsWithoutFilter(t *testing.T) {
+	h := resumed(t, newFake(), aliceState(mobileApp.ID))
+	h.start()
+
+	h.key(":")
+
+	if !strings.Contains(h.plainView(), "Kanban Board is disabled in mobile app, use the Taskboard") {
+		t.Errorf("hint missing:\n%s", h.plainView())
+	}
+}

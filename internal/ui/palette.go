@@ -13,6 +13,7 @@ import (
 	"github.com/zeckitoz/taiga-tui/internal/config"
 )
 
+// paletteAction is what the Team Member did in the palette.
 type paletteAction int
 
 const (
@@ -35,6 +36,7 @@ const (
 	paletteFrame = 4
 )
 
+// entryKind tells what a palette entry goes to.
 type entryKind int
 
 const (
@@ -75,6 +77,7 @@ type palette struct {
 	top      int
 }
 
+// newPalette returns the palette with entries and an empty filter.
 func newPalette(entries []paletteEntry) palette {
 	p := palette{filter: newField(), selected: -1}
 	p.filter.Prompt = "❯ "
@@ -84,11 +87,20 @@ func newPalette(entries []paletteEntry) palette {
 	return p
 }
 
-// setEntries replaces the entries, keeping the selection if the entry at
-// the same place is still visible.
+// setEntries replaces the entries, keeping the selected entry if it is
+// still there.
 func (p *palette) setEntries(entries []paletteEntry) {
-	p.entries = entries
+	old, ok := p.chosen()
+	p.entries, p.selected = entries, -1
+	if ok {
+		p.selected = slices.IndexFunc(entries, func(e paletteEntry) bool { return e.goesTo(old) })
+	}
 	p.refilter()
+}
+
+// goesTo reports whether e and o go to the same place.
+func (e paletteEntry) goesTo(o paletteEntry) bool {
+	return e.kind == o.kind && e.board == o.board && e.id == o.id
 }
 
 // refilter ranks the entries by the filter and selects the first one that
@@ -100,6 +112,7 @@ func (p *palette) refilter() {
 	}
 }
 
+// selectFirst selects the best match that can be chosen.
 func (p *palette) selectFirst() {
 	p.selected = -1
 	for _, i := range p.visible {
@@ -118,13 +131,21 @@ func (p *palette) chosen() (paletteEntry, bool) {
 	return p.entries[p.selected], true
 }
 
-// hint tells what to do instead of a disabled entry that is the best match
-// of the filter.
+// hint tells what to do instead of a disabled entry: the first one without
+// a filter, else the best match of the filter.
 func (p *palette) hint() string {
-	if strings.TrimSpace(p.filter.Value()) == "" || len(p.visible) == 0 {
+	if len(p.visible) == 0 {
 		return ""
 	}
-	return p.entries[p.visible[0]].hint
+	if strings.TrimSpace(p.filter.Value()) != "" {
+		return p.entries[p.visible[0]].hint
+	}
+	for _, i := range p.visible {
+		if h := p.entries[i].hint; h != "" {
+			return h
+		}
+	}
+	return ""
 }
 
 // move selects the next entry in direction d that can be chosen and stays
@@ -142,6 +163,8 @@ func (p *palette) move(d int) {
 	}
 }
 
+// update handles msg, keeping the selection visible in a list of listH
+// lines.
 func (p *palette) update(msg tea.Msg, listH int) (paletteAction, tea.Cmd) {
 	defer p.scroll(listH)
 	key, ok := msg.(tea.KeyPressMsg)
@@ -173,6 +196,7 @@ func (p *palette) update(msg tea.Msg, listH int) (paletteAction, tea.Cmd) {
 	return paletteNone, cmd
 }
 
+// scroll keeps the selection visible in a list of listH lines.
 func (p *palette) scroll(listH int) {
 	p.top = scrollTop(p.top, slices.Index(p.visible, p.selected), len(p.visible), listH)
 }
@@ -183,6 +207,8 @@ func paletteBox(w, h int) (boxW, listH int) {
 	return min(paletteMaxWidth, w-4), h - paletteTop - 2 - paletteChromeLines
 }
 
+// setWidth fits the filter into the palette box of a board area w cells
+// wide.
 func (p *palette) setWidth(w int) {
 	boxW, _ := paletteBox(w, 0)
 	// The prompt and the cursor take three cells.
