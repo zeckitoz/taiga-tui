@@ -15,7 +15,10 @@ const cPaneMin = 110
 
 var usStyleNames = []string{"Band", "Akzentfarbe + Abstand", "Trennlinie"}
 
-func (m model) cPaneVisible() bool { return !m.hidePane && m.w >= cPaneMin }
+func (m model) cPaneVisible() bool { return !m.hidePane }
+
+// Unterhalb von cPaneMin Spalten steht die Detailansicht unter der Liste statt rechts daneben.
+const cBottomH = 9
 
 type cItem struct {
 	row  Row
@@ -101,9 +104,14 @@ func (m model) viewC(h int) string {
 	rows := m.rows()
 	items := m.cItems(rows)
 	W := m.w
-	pane := m.cPaneVisible()
+	pane := m.cPaneVisible() && W >= cPaneMin
+	bottom := m.cPaneVisible() && W < cPaneMin
 	listW := W
 	paneW := 0
+	listH := h
+	if bottom {
+		listH = max(3, h-cBottomH-1)
+	}
 	if pane {
 		paneW = min(52, W*2/5)
 		listW = W - paneW - 1
@@ -169,9 +177,13 @@ func (m model) viewC(h int) string {
 	if len(items) == 0 {
 		lines = append(lines, faint.Render("  Keine Tasks für diesen Filter."))
 	}
-	list := m.window(lines, focus, h)
+	list := m.window(lines, focus, listH)
 	for i := range list {
 		list[i] = fit(list[i], listW)
+	}
+	if bottom {
+		return lipgloss.JoinVertical(lipgloss.Left, strings.Join(list, "\n"),
+			faint.Render(strings.Repeat("─", W)), m.cPane(W, h-listH-1))
 	}
 	if !pane {
 		return strings.Join(list, "\n")

@@ -43,7 +43,7 @@ type model struct {
 	cIdx      int
 	collapsed map[int]bool // Story-Ref (-1 = ohne User Story)
 	hidePane  bool         // Variante C: Detailspalte ausgeblendet (d)
-	usStyle   int          // Variante C: Darstellung der User-Story-Zeilen (u)
+	usStyle   int          // Variante C: Darstellung der User-Story-Zeilen (entschieden: 1)
 	sc        *scroll
 }
 
@@ -234,15 +234,15 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.many = !m.many
 			m.sync()
 		case "enter":
-			if m.variant == 2 && m.cOnStory() {
-				m.cToggle()
-			} else if m.sel != 0 && !(m.variant == 2 && m.cPaneVisible()) {
+			if m.variant == 2 {
+				if m.cOnStory() {
+					m.cToggle()
+				} else if m.sel != 0 {
+					m.hidePane = !m.hidePane // Detailansicht ein-/ausblenden, kein Overlay
+				}
+			} else if m.sel != 0 {
 				m.detail = true
 			}
-		case "d":
-			m.hidePane = !m.hidePane
-		case "u":
-			m.usStyle = (m.usStyle + 1) % len(usStyleNames)
 		case " ":
 			if m.variant == 2 {
 				m.cToggle()
@@ -383,7 +383,7 @@ func (m model) switcher() string {
 	}
 	name := variantNames[m.variant]
 	if m.variant == 2 {
-		name += "  ·  u User Story: " + usStyleNames[m.usStyle] + "  ·  d Detail"
+		name += "  ·  ⏎ auf Task: Detail ein/aus, auf User Story: einklappen"
 	}
 	l := pill.Render(" PROTOTYP ") + bar.Render(" ◀ shift+tab  "+name+"  tab ▶ ")
 	r := bar.Render(fmt.Sprintf(" %d×%d · m nur meine · S 8 Status: %s · ⏎ Detail · q ", m.w, m.h, many))
@@ -445,7 +445,7 @@ func main() {
 	keys := flag.String("keys", "", "Tasten für -snap, kommagetrennt")
 	raw := flag.Bool("raw", false, "Snapshot mit ANSI-Farben")
 	flag.Parse()
-	m := model{collapsed: map[int]bool{}, sc: &scroll{}}
+	m := model{collapsed: map[int]bool{}, sc: &scroll{}, usStyle: 1}
 	m.variant = max(0, min(2, int(strings.ToUpper(*v)[0]-'A')))
 	m.sync()
 	if *snap != "" {
