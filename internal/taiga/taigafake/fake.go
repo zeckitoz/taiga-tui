@@ -291,7 +291,12 @@ func (f *Fake) PatchUserStory(ctx context.Context, id int64, version int, p doma
 			if s.Version != version {
 				return domain.UserStory{}, taiga.ErrConflict
 			}
-			s.Status = p.Status
+			if p.Status != 0 {
+				s.Status = p.Status
+			}
+			if p.Assignees != nil {
+				s.Assignees = slices.Clone(p.Assignees) // never share the slice with the caller
+			}
 			s.Version++
 			stories[i] = s
 			return s, nil
@@ -316,7 +321,12 @@ func (f *Fake) PatchTask(ctx context.Context, id int64, version int, p domain.Ta
 			if t.Version != version {
 				return domain.Task{}, taiga.ErrConflict
 			}
-			t.Status = p.Status
+			if p.Status != 0 {
+				t.Status = p.Status
+			}
+			if p.Assignee != 0 {
+				t.Assignee = p.Assignee
+			}
 			t.Version++
 			tasks[i] = t
 			return t, nil

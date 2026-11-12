@@ -1,4 +1,4 @@
-# Status Change and Take Over via the Taiga API
+# Status Change and Assign to me via the Taiga API
 
 Research for issue #4 (part of the MVP map #1).
 
@@ -20,14 +20,14 @@ This was checked with an unauthenticated GET of the start page only.
 
 ## Summary
 
-- Status Change and Take Over are plain `PATCH /api/v1/tasks/{id}` and `PATCH /api/v1/userstories/{id}` requests that send only the changed fields plus the `version` read last.
+- Status Change and Assign to me are plain `PATCH /api/v1/tasks/{id}` and `PATCH /api/v1/userstories/{id}` requests that send only the changed fields plus the `version` read last.
 - The server maintains `kanban_order`, `taskboard_order`, `sprint_order` and `backlog_order` on its own when the Status changes; a client that does not care about the position inside a column can ignore them.
 - A version conflict is HTTP `400` with body `{"version": "The version doesn't match with the current one"}`, but only if the conflicting earlier edits touched one of the fields this request sends; edits to other fields merge silently.
 - The web UI's Kanban drag-and-drop uses `POST /api/v1/userstories/bulk_update_kanban_order` (no `version`, no OCC at all); the Taskboard drag-and-drop uses a normal `PATCH` on the Task plus an optional `set-orders` header.
 - A Team Member needs `modify_task` (Tasks) or `modify_us` (User Stories); all default roles except "Stakeholder" have both.
-- Take Over on a Task sets `assigned_to`; on a User Story the web UI adds the user to `assigned_users` and sets `assigned_to` to the user, keeping other assignees.
+- Assign to me on a Task sets `assigned_to`; on a User Story the web UI adds the user to `assigned_users` and sets `assigned_to` to the user, keeping other assignees.
 
-Recommendation for the TUI: use `PATCH` with `version` for both Status Change and Take Over, sending only `status` (or the assignee fields) plus `version`; do not use the bulk endpoints in the MVP; on a `400` with a `version` key, reload the item and tell the user.
+Recommendation for the TUI: use `PATCH` with `version` for both Status Change and Assign to me, sending only `status` (or the assignee fields) plus `version`; do not use the bulk endpoints in the MVP; on a `400` with a `version` key, reload the item and tell the user.
 
 ## Optimistic concurrency control (OCC)
 
@@ -148,9 +148,9 @@ Content-Type: application/json
 
 `POST /api/v1/userstories/bulk_update_sprint_order` and `bulk_update_backlog_order` exist for the backlog and Sprint lists; they are not needed for the MVP.
 
-## Take Over (Assignee)
+## Assign to me (Assignee)
 
-Take Over means making yourself the Assignee.
+Assign to me means making yourself the Assignee.
 The current user's id comes from `GET /api/v1/users/me`.
 
 ### Task
@@ -179,7 +179,7 @@ Since `assigned_users` is a whole list, the client must send the full new list, 
 OCC protects this: if someone changed the assignees in between, the request fails with the `version` error instead of dropping their change.
 The Kanban Board filters by `assigned_users`, and `filters_data` keeps `assigned_to` only for retro-compatibility (`BACK/taiga/projects/userstories/api.py#L350-L363`), so the "only mine" filter for User Stories should check `assigned_users`, not only `assigned_to`.
 
-Design decision for the TUI: Take Over on a User Story can either add the user (web UI behaviour) or replace all Assignees.
+Design decision for the TUI: Assign to me on a User Story can either add the user (web UI behaviour) or replace all Assignees.
 Matching the web UI (add, and make main Assignee) is the least surprising choice.
 
 ## Permissions
@@ -195,7 +195,7 @@ Both viewsets use `CommentAndOrUpdatePerm` for `update` and `partial_update` (`B
 `CommentAndOrUpdatePerm` ignores `version` when checking whether the body is comment-only (`BACK/taiga/permissions/permissions.py#L49-L71`).
 
 In the default Scrum and Kanban project templates every role except "Stakeholder" has `modify_task`, `modify_us`, `view_tasks` and `view_us`; "Stakeholder" only has view and comment (`BACK/taiga/projects/fixtures/initial_project_templates.json`).
-Roles are per project and editable by the project admin, so the TUI should read the user's actual permissions from the project detail (`GET /api/v1/projects/{id}` returns `my_permissions`) and disable Status Change and Take Over when `modify_task`/`modify_us` is missing, instead of relying on the `403`.
+Roles are per project and editable by the project admin, so the TUI should read the user's actual permissions from the project detail (`GET /api/v1/projects/{id}` returns `my_permissions`) and disable Status Change and Assign to me when `modify_task`/`modify_us` is missing, instead of relying on the `403`.
 
 A missing permission yields `403` with `{"_error_message": "You do not have permission to perform this action.", "_error_type": "taiga.base.exceptions.PermissionDenied"}` (`BACK/taiga/base/exceptions.py#L81-L84`, `#L218-L229`).
 
@@ -205,7 +205,7 @@ A missing permission yields `403` with `{"_error_message": "You do not have perm
    Do not send order fields.
    The server puts User Stories at the end of the new column and keeps the Task's `taskboard_order`.
    Sort columns client-side by `kanban_order` and `taskboard_order` as returned.
-2. Take Over: Task `{"assigned_to": me, "version": v}`; User Story `{"assigned_users": old + [me], "assigned_to": me, "version": v}`.
+2. Assign to me: Task `{"assigned_to": me, "version": v}`; User Story `{"assigned_users": old + [me], "assigned_to": me, "version": v}`.
 3. Replace the cached item with the response body (it carries the new `version`).
    After a Task Status Change, also reload its User Story (its `is_closed` may have flipped).
 4. Conflict handling: on `400` whose body has a `version` key, reload the item, show a short message ("changed by someone else"), and let the user retry.

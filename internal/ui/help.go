@@ -21,6 +21,7 @@ var commonHelp = []keyHelp{
 var kanbanHelp = []keyHelp{
 	{"⇧←/→ H/L", "change to previous / next status"},
 	{"s", "pick a status"},
+	{"a", "assign to me"},
 	{"←/→ h/l", "previous / next tab"},
 	{"↑/↓ j/k", "move"},
 	{"enter", "show / hide detail"},
@@ -30,6 +31,7 @@ var kanbanHelp = []keyHelp{
 var taskboardHelp = []keyHelp{
 	{"⇧←/→ H/L", "change to previous / next status"},
 	{"s", "pick a status"},
+	{"a", "assign to me"},
 	{"↑/↓ j/k", "move"},
 	{"←/→ h/l", "fold / unfold user story, hide / show detail"},
 	{"enter", "fold / unfold user story, or show / hide detail of a task"},

@@ -14,22 +14,40 @@ import (
 	"github.com/zeckitoz/taiga-tui/internal/taiga"
 )
 
+// assignToMe makes the Team Member the Assignee of the selected row of the
+// board shown, or tells why it cannot. If that replaces the Assignee of a
+// Task, it asks first and waits for the answer to the question.
+func (a App) assignToMe(confirmed board.ConfirmAssignToMe) (App, tea.Cmd) {
+	return a.applyChange(func(a App) (App, board.Effect, error) { return a.shownBoard().assignToMe(a, confirmed) })
+}
+
+// answerAssignToMe handles the key that answers the question of an Assign to me:
+// y replaces the Assignee, any other key keeps them.
+func (a App) answerAssignToMe(key tea.KeyPressMsg) (App, tea.Cmd) {
+	asked := *a.asked
+	a.asked = nil
+	if key.String() == "y" {
+		return a.assignToMe(asked)
+	}
+	return a, nil
+}
+
 // changeStatus moves the selected row of the board shown to the Status
 // next to its own in direction d, or tells why it cannot.
 func (a App) changeStatus(d board.Direction) (App, tea.Cmd) {
-	return a.applyStatusChange(func(a App) (App, board.Effect, error) { return a.shownBoard().changeStatus(a, d) })
+	return a.applyChange(func(a App) (App, board.Effect, error) { return a.shownBoard().changeStatus(a, d) })
 }
 
 // pickStatus changes the selected row of the board shown to the Status
 // with the given ID, or tells why it cannot.
 func (a App) pickStatus(id int64) (App, tea.Cmd) {
-	return a.applyStatusChange(func(a App) (App, board.Effect, error) { return a.shownBoard().pickStatus(a, id) })
+	return a.applyChange(func(a App) (App, board.Effect, error) { return a.shownBoard().pickStatus(a, id) })
 }
 
-// applyStatusChange makes a Status Change on the board shown through
-// change. It is the one path of both the keys for the next or previous
-// Status and the picker.
-func (a App) applyStatusChange(change func(App) (App, board.Effect, error)) (App, tea.Cmd) {
+// applyChange makes a Status Change or Assign to me on the board shown through
+// change. It is the one path of the keys for the next or previous Status,
+// the picker and Assign to me.
+func (a App) applyChange(change func(App) (App, board.Effect, error)) (App, tea.Cmd) {
 	a, eff, err := change(a)
 	if err != nil {
 		a.status = append(a.status, statusMsg{text: err.Error(), hint: true})
@@ -43,9 +61,12 @@ func (a App) applyStatusChange(change func(App) (App, board.Effect, error)) (App
 // runEffect translates an effect of the board on into a command.
 func (a App) runEffect(eff board.Effect, on config.Board) (App, tea.Cmd) {
 	switch e := eff.(type) {
-	case board.SaveStatus:
+	case board.Save:
 		a.sent = a.sent.Add(e)
-		return a, saveStatus(a.deps.Taiga, e, on)
+		return a, saveChange(a.deps.Taiga, e, on)
+	case board.ConfirmAssignToMe:
+		a.asked = &e
+		a.status = append(a.status, statusMsg{text: "Replace " + plainText(e.Name) + " as assignee? y/n", hint: true})
 	case board.ReloadBoard:
 		if a.screen == screenBoard && a.board == on {
 			return boardOps(on).reload(a)
@@ -60,28 +81,28 @@ func (a App) runEffect(eff board.Effect, on config.Board) (App, tea.Cmd) {
 	return a, nil
 }
 
-// saveStatus returns the command that saves the Status Change of save made
+// saveChange returns the command that saves the change of save made
 // on the board on. Like every PATCH it is never canceled, because the
 // change takes effect on the server anyway.
-func saveStatus(api Taiga, save board.SaveStatus, on config.Board) tea.Cmd {
+func saveChange(api Taiga, save board.Save, on config.Board) tea.Cmd {
 	return func() tea.Msg {
 		ctx := context.Background()
-		msg := statusSavedMsg{on: on, save: save}
+		msg := savedMsg{on: on, save: save}
 		if save.Kind == board.TaskItem {
-			msg.task, msg.err = api.PatchTask(ctx, save.ID, save.Version, domain.TaskPatch{Status: save.Status})
+			msg.task, msg.err = api.PatchTask(ctx, save.ID, save.Version, domain.TaskPatch{Status: save.Status, Assignee: save.Assignee})
 		} else {
-			msg.story, msg.err = api.PatchUserStory(ctx, save.ID, save.Version, domain.UserStoryPatch{Status: save.Status})
+			msg.story, msg.err = api.PatchUserStory(ctx, save.ID, save.Version, domain.UserStoryPatch{Status: save.Status, Assignee: save.Assignee, Assignees: save.Assignees})
 		}
 		return msg
 	}
 }
 
-// statusSaved feeds the result of a save back into its board and shows why
+// savedResult feeds the result of a save back into its board and shows why
 // a change was undone. The board ignores results that no longer count,
 // e.g. after the Team Member left it.
-func (a App) statusSaved(msg statusSavedMsg) (tea.Model, tea.Cmd) {
+func (a App) savedResult(msg savedMsg) (tea.Model, tea.Cmd) {
 	a.sent = a.sent.Answered(msg.save)
-	a, eff, ok := boardOps(msg.on).statusSaved(a, msg)
+	a, eff, ok := boardOps(msg.on).savedResult(a, msg)
 	if !ok {
 		if msg.err == nil {
 			// The Team Member left the board: the change took effect on the
@@ -103,7 +124,7 @@ func (a App) statusSaved(msg statusSavedMsg) (tea.Model, tea.Cmd) {
 
 // withSavedItem gives both boards the item of a successful save whose
 // board ignored the result.
-func (a App) withSavedItem(msg statusSavedMsg) App {
+func (a App) withSavedItem(msg savedMsg) App {
 	if msg.save.Kind == board.TaskItem {
 		return a.withTaskboard(func(tb board.Taskboard) board.Taskboard { return tb.ReplaceTask(msg.task) })
 	}
@@ -136,6 +157,27 @@ func saveFailure(ref int, err error) statusMsg {
 		return statusMsg{text: item + " no longer exists. Reloaded.", hint: true}
 	}
 	return statusMsg{text: "Couldn't save " + item + ": " + reason(err), isErr: true, hint: true}
+}
+
+// assignToMeKanban makes the Team Member an Assignee of the selected User
+// Story of the Kanban Board.
+func (a App) assignToMeKanban(board.ConfirmAssignToMe) (App, board.Effect, error) {
+	var eff board.Effect
+	var err error
+	a.kanban, eff, err = a.kanban.AssignToMe(a.sent)
+	return a, eff, err
+}
+
+// assignToMeTaskboard makes the Team Member the Assignee of the selected row
+// of the Taskboard.
+func (a App) assignToMeTaskboard(confirmed board.ConfirmAssignToMe) (App, board.Effect, error) {
+	tb, ok := a.sprints.Taskboard()
+	if !ok {
+		return a, nil, nil
+	}
+	tb, eff, err := tb.AssignToMe(a.sent, confirmed)
+	a.sprints = a.sprints.WithTaskboard(tb)
+	return a, eff, err
 }
 
 // changeKanbanStatus changes the Status of the selected User Story of the
@@ -222,20 +264,20 @@ func (a App) changeTaskboardStatus(d board.Direction) (App, board.Effect, error)
 	return a, eff, err
 }
 
-// kanbanStatusSaved feeds the result of a save into the Kanban Board.
-func (a App) kanbanStatusSaved(msg statusSavedMsg) (App, board.Effect, bool) {
+// kanbanSaved feeds the result of a save into the Kanban Board.
+func (a App) kanbanSaved(msg savedMsg) (App, board.Effect, bool) {
 	var eff board.Effect
 	ok := false
 	if f, failed := saveFailureOf(msg.err); failed {
-		a.kanban, eff, ok = a.kanban.StatusNotSaved(msg.save, f)
+		a.kanban, eff, ok = a.kanban.NotSaved(msg.save, f)
 	} else {
-		a.kanban, ok = a.kanban.StatusSaved(msg.save, msg.story)
+		a.kanban, ok = a.kanban.Saved(msg.save, msg.story)
 	}
 	return a, eff, ok
 }
 
-// taskboardStatusSaved feeds the result of a save into the Taskboard shown.
-func (a App) taskboardStatusSaved(msg statusSavedMsg) (App, board.Effect, bool) {
+// taskboardSaved feeds the result of a save into the Taskboard shown.
+func (a App) taskboardSaved(msg savedMsg) (App, board.Effect, bool) {
 	tb, has := a.sprints.Taskboard()
 	if !has {
 		return a, nil, false
@@ -245,7 +287,7 @@ func (a App) taskboardStatusSaved(msg statusSavedMsg) (App, board.Effect, bool) 
 	f, failed := saveFailureOf(msg.err)
 	switch {
 	case failed:
-		tb, eff, ok = tb.StatusNotSaved(msg.save, f)
+		tb, eff, ok = tb.NotSaved(msg.save, f)
 	case msg.save.Kind == board.TaskItem:
 		tb, eff, ok = tb.TaskSaved(msg.save, msg.task)
 	default:

@@ -52,6 +52,6 @@ _Avoid_: User, Nutzer, account
 A Team Member responsible for a User Story or Task. A User Story can have several Assignees; a Task has at most one.
 _Avoid_: Owner, Zuständiger, responsible
 
-**Take Over**:
+**Assign to me**:
 Making yourself the Assignee of a User Story or Task.
-_Avoid_: Claim, grab, self-assign
+_Avoid_: Take Over, claim, grab, self-assign

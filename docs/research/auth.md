@@ -132,7 +132,7 @@ For the TUI this has no practical impact, because the auth API is unchanged sinc
 1. On first start, ask for username (or e-mail) and password in the terminal, with no echo for the password.
    Never accept the password as a CLI flag.
 2. `POST /api/v1/auth` with `{"type":"normal","username":...,"password":...}`.
-   Keep `id`, `username` and `full_name_display` from the response (the TUI needs its own user id for Take Over and the "only mine" filter).
+   Keep `id`, `username` and `full_name_display` from the response (the TUI needs its own user id for Assign to me and the "only mine" filter).
    Discard the password right away.
 3. Store only the `refresh` token in the OS keychain (macOS Keychain, Secret Service on Linux, Windows Credential Manager).
    Keep `auth_token` in memory only.

@@ -89,7 +89,7 @@ Solutions worth copying (with attribution, MIT):
 
 - A missing, negative or future `version` raises `WrongArguments({"version": "The version parameter is not valid"})`, so `version` is mandatory on every PATCH.
 - If the sent version is older than the current one, Taiga computes the fields changed since then (`get_modified_fields`) and only rejects (`"The version doesn't match with the current one"`) when they intersect the fields in our PATCH.
-  A Status Change therefore succeeds on a stale version as long as nobody else changed `status` in between; a Take Over only conflicts if `assigned_to` changed.
+  A Status Change therefore succeeds on a stale version as long as nobody else changed `status` in between; an Assign to me only conflicts if `assigned_to` changed.
 - On success the version is incremented and returned in the response body, which we must store for the next write.
 
 Note that the "not valid" case is also a plain string under `version`, so KoukeNeko's rule would classify it as a conflict; harmless if we always send the version we last read, but our client should keep the two apart (e.g. by never sending a version we did not receive).

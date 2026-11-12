@@ -21,15 +21,22 @@ const (
 	TaskItem
 )
 
-// SaveStatus is the effect of saving a Status Change. Its result goes back
-// into StatusSaved, TaskSaved or UserStorySaved, or into StatusNotSaved.
-type SaveStatus struct {
+// Save is the effect of saving a change of an item: a Status Change or a
+// Assign to me. Its result goes back into Saved, TaskSaved or UserStorySaved,
+// or into NotSaved.
+type Save struct {
 	Kind ItemKind
 	ID   int64
 	Ref  int
-	// Status is the new Status, Version that of the item as last loaded.
-	Status  int64
+	// Version is that of the item as last loaded.
 	Version int
+	// Status is the new Status of a Status Change, 0 for an Assign to me.
+	Status int64
+	// Assignee is the new main Assignee of an Assign to me, 0 for a Status
+	// Change. Assignees are all Assignees of a User Story after a Take
+	// Over, the main one first; they are nil for a Task.
+	Assignee  int64
+	Assignees []int64
 	// Generation tells this save apart from earlier saves of the item, whose
 	// results no longer count.
 	Generation int
@@ -47,7 +54,7 @@ type ReloadUserStory struct {
 	Sprint int64
 }
 
-func (SaveStatus) isEffect()      {}
+func (Save) isEffect()            {}
 func (ReloadBoard) isEffect()     {}
 func (ReloadUserStory) isEffect() {}
 
@@ -70,13 +77,27 @@ type Rejection string
 
 func (r Rejection) Error() string { return string(r) }
 
-// The rejections of a Status Change.
+// The rejections of a Status Change and an Assign to me.
 const (
-	ErrStillSaving   Rejection = "Still saving…"
-	ErrFirstStatus   Rejection = "Already in first status"
-	ErrLastStatus    Rejection = "Already in last status"
-	ErrUnknownStatus Rejection = "Unknown status"
+	ErrStillSaving     Rejection = "Still saving…"
+	ErrFirstStatus     Rejection = "Already in first status"
+	ErrLastStatus      Rejection = "Already in last status"
+	ErrUnknownStatus   Rejection = "Unknown status"
+	ErrAlreadyAssigned Rejection = "Already assigned to you"
 )
+
+// ConfirmAssignToMe is what an Assign to me returns instead of an effect when it
+// would displace the Assignee of a Task: the Team Member has to confirm
+// first. It names the Task, the Assignee to replace and their Name. Passing
+// it back to the Assign to me confirms it, as long as the Task still has that
+// Assignee.
+type ConfirmAssignToMe struct {
+	ID       int64
+	Assignee int64
+	Name     string
+}
+
+func (ConfirmAssignToMe) isEffect() {}
 
 // noPermission is the rejection of a change to an item of kind the Team
 // Member may not modify.
@@ -145,7 +166,7 @@ type Sent struct {
 }
 
 // Add records that save was sent.
-func (s Sent) Add(save SaveStatus) Sent {
+func (s Sent) Add(save Save) Sent {
 	s.generation = max(s.generation, save.Generation)
 	s.byItem = maps.Clone(s.byItem) // never share the map with the receiver
 	if s.byItem == nil {
@@ -156,7 +177,7 @@ func (s Sent) Add(save SaveStatus) Sent {
 }
 
 // Answered records that the result of save arrived.
-func (s Sent) Answered(save SaveStatus) Sent {
+func (s Sent) Answered(save Save) Sent {
 	key := itemKey{save.Kind, save.ID}
 	if s.byItem[key] != save.Generation {
 		return s
@@ -173,13 +194,17 @@ func (s Sent) saving(kind ItemKind, id int64) bool {
 	return ok
 }
 
-// workItem is what a Status Change needs to know of a User Story or Task.
+// workItem is what a Status Change or Assign to me needs to know of a User
+// Story or Task.
 type workItem struct {
 	kind    ItemKind
 	id      int64
 	ref     int
 	status  int64
 	version int
+	// assignees are the Assignees, the main one first: none or the one of a
+	// Task.
+	assignees []int64
 }
 
 // itemKey identifies a work item across both kinds.
@@ -188,11 +213,11 @@ type itemKey struct {
 	id   int64
 }
 
-// saves holds the Status Changes of a board being saved, one per item: the
-// item shows its new Status until the result arrives. Its methods return a
-// new store and never change the receiver.
+// saves holds the changes of a board being saved, one per item: the item
+// shows its new Status or Assignees until the result arrives. Its methods
+// return a new store and never change the receiver.
 type saves struct {
-	byItem map[itemKey]SaveStatus
+	byItem map[itemKey]Save
 }
 
 // StatusOptions are the Statuses the selected row can be changed to.
@@ -252,21 +277,54 @@ func toStatus(id int64) target {
 // changeStatus starts the Status Change of it to the Status that to picks,
 // unless the Team Member may not change it, a save of it is still waiting
 // for its result in sent, or to refuses.
-func (s saves) changeStatus(p domain.Project, sent Sent, it workItem, to target) (saves, SaveStatus, error) {
+func (s saves) changeStatus(p domain.Project, sent Sent, it workItem, to target) (saves, Save, error) {
 	if err := s.refusal(p, sent, it); err != nil {
-		return s, SaveStatus{}, err
+		return s, Save{}, err
 	}
 	status, err := to(statusesOf(p, it.kind), it.status)
 	if err != nil {
-		return s, SaveStatus{}, err
+		return s, Save{}, err
 	}
-	save := SaveStatus{Kind: it.kind, ID: it.id, Ref: it.ref, Status: status, Version: it.version, Generation: sent.generation + 1}
+	sv, save := s.start(sent, Save{Kind: it.kind, ID: it.id, Ref: it.ref, Version: it.version, Status: status})
+	return sv, save, nil
+}
+
+// assignToMe starts assigning it to the Team Member with ID me, unless
+// the Team Member may not change it, a save of it is still waiting for its
+// result in sent, or they are an Assignee already. It returns the effect
+// ConfirmAssignToMe instead if the Task has another Assignee and the Team
+// Member has not confirmed replacing them.
+func (s saves) assignToMe(p domain.Project, me int64, sent Sent, it workItem, confirmed ConfirmAssignToMe) (saves, Effect, error) {
+	if err := s.refusal(p, sent, it); err != nil {
+		return s, nil, err
+	}
+	if slices.Contains(it.assignees, me) {
+		return s, nil, ErrAlreadyAssigned
+	}
+	save := Save{Kind: it.kind, ID: it.id, Ref: it.ref, Version: it.version, Assignee: me}
+	if it.kind == TaskItem {
+		if len(it.assignees) > 0 {
+			ask := ConfirmAssignToMe{ID: it.id, Assignee: it.assignees[0], Name: memberName(p, it.assignees[0])}
+			if confirmed != ask {
+				return s, ask, nil
+			}
+		}
+	} else {
+		save.Assignees = append([]int64{me}, it.assignees...)
+	}
+	sv, save := s.start(sent, save)
+	return sv, save, nil
+}
+
+// start records save, which gets the next generation after those in sent.
+func (s saves) start(sent Sent, save Save) (saves, Save) {
+	save.Generation = sent.generation + 1
 	s.byItem = maps.Clone(s.byItem) // never share the map with the receiver
 	if s.byItem == nil {
-		s.byItem = map[itemKey]SaveStatus{}
+		s.byItem = map[itemKey]Save{}
 	}
-	s.byItem[itemKey{it.kind, it.id}] = save
-	return s, save, nil
+	s.byItem[itemKey{save.Kind, save.ID}] = save
+	return s, save
 }
 
 // saving reports whether the item of kind with the given ID is saving.
@@ -281,16 +339,34 @@ func (s saves) any() bool { return len(s.byItem) > 0 }
 // status returns the Status the item of kind with the given ID shows: the
 // one being saved, or else status.
 func (s saves) status(kind ItemKind, id, status int64) int64 {
-	if save, ok := s.byItem[itemKey{kind, id}]; ok {
+	if save, ok := s.byItem[itemKey{kind, id}]; ok && save.Status != 0 {
 		return save.Status
 	}
 	return status
 }
 
+// assignees returns the Assignees the User Story with the given ID shows:
+// those being saved, or else assignees.
+func (s saves) assignees(id int64, assignees []int64) []int64 {
+	if save, ok := s.byItem[itemKey{UserStoryItem, id}]; ok && save.Assignees != nil {
+		return save.Assignees
+	}
+	return assignees
+}
+
+// assignee returns the Assignee the Task with the given ID shows: the one
+// being saved, or else assignee.
+func (s saves) assignee(id, assignee int64) int64 {
+	if save, ok := s.byItem[itemKey{TaskItem, id}]; ok && save.Assignee != 0 {
+		return save.Assignee
+	}
+	return assignee
+}
+
 // end ends save, or returns false if its result no longer counts.
-func (s saves) end(save SaveStatus) (saves, bool) {
+func (s saves) end(save Save) (saves, bool) {
 	key := itemKey{save.Kind, save.ID}
-	if cur, ok := s.byItem[key]; !ok || cur != save {
+	if cur, ok := s.byItem[key]; !ok || cur.Generation != save.Generation {
 		return s, false
 	}
 	s.byItem = maps.Clone(s.byItem)

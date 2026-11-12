@@ -1,6 +1,6 @@
 # Board state returns effects as data
 
-Status Change and Take Over need optimistic changes, a lock per item, a rollback on errors, a reload on conflicts and a reload of the project data on unknown IDs.
+Status Change and Assign to me need optimistic changes, a lock per item, a rollback on errors, a reload on conflicts and a reload of the project data on unknown IDs.
 This logic lives entirely in `internal/board`, a pure state machine that imports neither Bubble Tea nor HTTP.
 An action like `ChangeStatus` returns the new state and an effect as data (e.g. `SaveStatus`, `ReloadBoard`, `ReloadProject`) or a rejection.
 The results of the requests (`Saved`, `Conflict`, `NotFound`, `Failed`) are fed back into `board` as input.
