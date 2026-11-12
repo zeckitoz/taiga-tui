@@ -262,7 +262,11 @@ func TestProjectBecomesDefaultOnlyAfterItLoaded(t *testing.T) {
 	if view := h.plainView(); !strings.Contains(view, "Couldn't load Web Shop: timed out") {
 		t.Errorf("view:\n%s", view)
 	}
-	h.key("r")
+	if h.app.screen != screenPicker {
+		t.Fatalf("picker not open after a failed switch, screen %v", h.app.screen)
+	}
+	h.golden("picker_project_failed")
+	h.key("enter")
 	if h.state.saved.DefaultProject != webShop.ID {
 		t.Errorf("default not saved after retry: %+v", h.state.saved)
 	}

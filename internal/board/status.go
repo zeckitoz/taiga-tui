@@ -54,7 +54,14 @@ type ReloadUserStory struct {
 	Sprint int64
 }
 
-func (Save) isEffect()            {}
+func (Save) isEffect() {}
+
+// ReloadProject is the effect of reloading the project data, because loaded
+// data refers to Statuses or Team Members the project does not know. Its
+// result goes back into ProjectReloaded.
+type ReloadProject struct{}
+
+func (ReloadProject) isEffect()   {}
 func (ReloadBoard) isEffect()     {}
 func (ReloadUserStory) isEffect() {}
 
