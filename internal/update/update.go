@@ -3,12 +3,14 @@
 package update
 
 import (
+	"cmp"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -136,17 +138,11 @@ func parse(v string) (semver, bool) {
 }
 
 func (a semver) less(b semver) bool {
-	if a.core != b.core {
-		for i := range a.core {
-			if a.core[i] != b.core[i] {
-				return a.core[i] < b.core[i]
-			}
-		}
+	if c := slices.Compare(a.core[:], b.core[:]); c != 0 {
+		return c < 0
 	}
 	switch {
-	case a.pre == b.pre:
-		return false
-	case a.pre == "":
+	case a.pre == b.pre, a.pre == "":
 		return false
 	case b.pre == "":
 		return true
@@ -162,7 +158,7 @@ func comparePre(a, b string) int {
 		bn, berr := strconv.Atoi(bs[i])
 		switch {
 		case aerr == nil && berr == nil && an != bn:
-			return cmpInt(an, bn)
+			return cmp.Compare(an, bn)
 		case aerr == nil && berr != nil:
 			return -1
 		case aerr != nil && berr == nil:
@@ -171,15 +167,5 @@ func comparePre(a, b string) int {
 			return strings.Compare(as[i], bs[i])
 		}
 	}
-	return cmpInt(len(as), len(bs))
-}
-
-func cmpInt(a, b int) int {
-	switch {
-	case a < b:
-		return -1
-	case a > b:
-		return 1
-	}
-	return 0
+	return cmp.Compare(len(as), len(bs))
 }
