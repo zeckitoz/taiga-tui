@@ -614,7 +614,7 @@ func (a App) boardFailed(err error, what string, retry func(App) (App, tea.Cmd))
 }
 
 // updateFailedBoard handles a key on a board that failed to load: retry, the
-// palette, help and quit.
+// palette and quit.
 func (a App) updateFailedBoard(key tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	switch key.String() {
 	case "r":
