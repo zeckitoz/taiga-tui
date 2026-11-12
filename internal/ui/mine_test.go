@@ -109,7 +109,7 @@ func TestTaskboardMineWithNothingAssignedShowsHintAndShowAll(t *testing.T) {
 	api := newFake()
 	api.SetStories(webShop.ID, domain.UserStory{ID: 502, Ref: 15, Title: "Product search", Status: 101, Sprint: 304, SprintOrder: 1})
 	api.SetTasks(webShop.ID, domain.Task{ID: 802, Ref: 32, Title: "Someone else's", Status: 204, UserStory: 502, Sprint: 304, Assignee: 43})
-	h := onTaskboardWith(t, api, 100, 24)
+	h := onTaskboardWith(t, api)
 
 	h.key("m")
 

@@ -39,6 +39,13 @@ type boardView struct {
 	loaded      func(App) bool
 	refreshing  func(App) bool
 	cancelLoads func(App) App
+	// unknownIDs returns the effect of reloading the project if the board
+	// loaded refers to unknown Statuses or Team Members, projectReloaded
+	// feeds the reloaded project back, and withProject hands it to the board
+	// that did not ask.
+	unknownIDs      func(App) (App, board.Effect)
+	projectReloaded func(App, board.ReloadProject, domain.Project) (App, bool)
+	withProject     func(App, domain.Project) App
 	// scroll keeps the selected row visible.
 	scroll func(*App)
 	// path is the header after the project name.
@@ -79,6 +86,20 @@ func boardOps(b config.Board) boardView {
 				a.sprints = a.sprints.CancelLoads()
 				return a
 			},
+			unknownIDs: func(a App) (App, board.Effect) {
+				var eff board.Effect
+				a.sprints, eff = a.sprints.ReloadProjectOnUnknown()
+				return a, eff
+			},
+			projectReloaded: func(a App, load board.ReloadProject, p domain.Project) (App, bool) {
+				var ok bool
+				a.sprints, ok = a.sprints.ProjectReloaded(load, p)
+				return a, ok
+			},
+			withProject: func(a App, p domain.Project) App {
+				a.sprints = a.sprints.WithProject(p)
+				return a
+			},
 			scroll: (*App).scrollTaskboard,
 			path:   App.taskboardPath,
 			body:   App.taskboardBody,
@@ -107,6 +128,20 @@ func boardOps(b config.Board) boardView {
 		cancelLoads: func(a App) App {
 			endLoad(&a.cancelKanban)
 			a.kanban = a.kanban.CancelLoads()
+			return a
+		},
+		unknownIDs: func(a App) (App, board.Effect) {
+			var eff board.Effect
+			a.kanban, eff = a.kanban.ReloadProjectOnUnknown()
+			return a, eff
+		},
+		projectReloaded: func(a App, load board.ReloadProject, p domain.Project) (App, bool) {
+			var ok bool
+			a.kanban, ok = a.kanban.ProjectReloaded(load, p)
+			return a, ok
+		},
+		withProject: func(a App, p domain.Project) App {
+			a.kanban = a.kanban.WithProject(p)
 			return a
 		},
 		scroll: (*App).scrollKanban,

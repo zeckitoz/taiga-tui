@@ -24,6 +24,9 @@ type Sprints struct {
 	refreshingSprints, refreshingTaskboard bool
 	// mine is applied to every Taskboard shown, see WithMine.
 	mine bool
+	// reloadedFor is the load of the Taskboard for which the project was
+	// reloaded because of unknown IDs, which happens once per load.
+	reloadedFor int
 }
 
 // LoadSprints is the effect of loading the Sprints of a project. Its result
@@ -175,6 +178,37 @@ func (s Sprints) Taskboard() (Taskboard, bool) { return s.taskboard, s.hasTaskbo
 func (s Sprints) WithTaskboard(tb Taskboard) Sprints {
 	if s.hasTaskboard {
 		s.taskboard = tb
+	}
+	return s
+}
+
+// ReloadProjectOnUnknown returns the effect of reloading the project if the
+// Taskboard refers to a Status or a Team Member the project does not know,
+// and none otherwise, or if it asked for the reload already since the last
+// load.
+func (s Sprints) ReloadProjectOnUnknown() (Sprints, Effect) {
+	if s.reloadedFor == s.taskboardGen || !s.hasTaskboard || !s.taskboard.hasUnknownIDs() {
+		return s, nil
+	}
+	s.reloadedFor = s.taskboardGen
+	return s, ReloadProject{ProjectID: s.project.ID, Generation: s.taskboardGen}
+}
+
+// ProjectReloaded takes the project from the result of the reload that load
+// asked for, or returns false if the result no longer counts.
+func (s Sprints) ProjectReloaded(load ReloadProject, p domain.Project) (Sprints, bool) {
+	if s.project.ID == 0 || load.ProjectID != s.project.ID || load.Generation != s.taskboardGen {
+		return s, false
+	}
+	return s.WithProject(p), true
+}
+
+// WithProject takes the project, which the Taskboard shown and those opened
+// later follow.
+func (s Sprints) WithProject(p domain.Project) Sprints {
+	s.project = p
+	if s.hasTaskboard {
+		s.taskboard = s.taskboard.withProject(p)
 	}
 	return s
 }

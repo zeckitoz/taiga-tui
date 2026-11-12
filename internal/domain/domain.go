@@ -53,6 +53,26 @@ func (p Project) Member(id int64) (TeamMember, bool) {
 	return TeamMember{}, false
 }
 
+// KnowsUserStoryStatus reports whether p has a User Story Status with the
+// given ID, archived or not.
+func (p Project) KnowsUserStoryStatus(id int64) bool {
+	return slices.ContainsFunc(p.UserStoryStatuses, func(s Status) bool { return s.ID == id })
+}
+
+// KnowsTaskStatus reports whether p has a Task Status with the given ID.
+func (p Project) KnowsTaskStatus(id int64) bool {
+	return slices.ContainsFunc(p.TaskStatuses, func(s Status) bool { return s.ID == id })
+}
+
+// KnowsMembers reports whether every one of the Team Member IDs is a member
+// of p.
+func (p Project) KnowsMembers(ids []int64) bool {
+	return !slices.ContainsFunc(ids, func(id int64) bool {
+		_, ok := p.Member(id)
+		return !ok
+	})
+}
+
 // Status is a workflow state of a User Story or Task.
 type Status struct {
 	ID   int64

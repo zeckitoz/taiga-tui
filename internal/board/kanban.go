@@ -19,7 +19,10 @@ import (
 type Kanban struct {
 	project  domain.Project
 	me       int64
-	statuses []domain.Status // active (non-archived) Statuses in Taiga order
+	statuses []domain.Status // the tabs: active (non-archived) Statuses in Taiga order, then Unknown if needed
+	// reloadedFor is the load for which the project was reloaded because of
+	// unknown IDs, which happens once per load.
+	reloadedFor int
 	// stories are the User Stories as last loaded or saved; byStatus groups
 	// them by the Status they show, which is the one being saved if any.
 	stories  []domain.UserStory
@@ -95,12 +98,55 @@ func NewKanban(p domain.Project, stories []domain.UserStory, me int64) Kanban {
 // results.
 func UnloadedKanban(p domain.Project, me int64) Kanban {
 	k := Kanban{project: p, me: me, cursor: map[int64]int64{}}
-	for _, s := range p.UserStoryStatuses {
-		if !s.Archived {
-			k.statuses = append(k.statuses, s)
-		}
+	return k.withTabs()
+}
+
+// unknownTab is the ID of the Status of the Unknown tab, which collects the
+// User Stories whose Status the project does not know.
+const unknownTab int64 = -1
+
+// withTabs lists the active Statuses of the project as tabs, followed by the
+// Unknown tab while a User Story has an unknown Status.
+func (k Kanban) withTabs() Kanban {
+	k.statuses = statusesOf(k.project, UserStoryItem)
+	if slices.ContainsFunc(k.stories, func(s domain.UserStory) bool { return !k.project.KnowsUserStoryStatus(s.Status) }) {
+		k.statuses = append(k.statuses, domain.Status{ID: unknownTab, Name: "Unknown"})
 	}
+	k.tab = min(k.tab, max(0, len(k.statuses)-1))
 	return k
+}
+
+// ReloadProjectOnUnknown returns the effect of reloading the project if a
+// User Story has a Status or an Assignee the project does not know, and none
+// otherwise, or if it asked for the reload already since the last load.
+func (k Kanban) ReloadProjectOnUnknown() (Kanban, Effect) {
+	if k.reloadedFor == k.loadGen || !k.hasUnknownIDs() {
+		return k, nil
+	}
+	k.reloadedFor = k.loadGen
+	return k, ReloadProject{ProjectID: k.project.ID, Generation: k.loadGen}
+}
+
+func (k Kanban) hasUnknownIDs() bool {
+	return slices.ContainsFunc(k.stories, func(s domain.UserStory) bool {
+		return !k.project.KnowsUserStoryStatus(s.Status) || !k.project.KnowsMembers(s.Assignees)
+	})
+}
+
+// ProjectReloaded takes the project from the result of the reload that load
+// asked for, or returns false if the result no longer counts.
+func (k Kanban) ProjectReloaded(load ReloadProject, p domain.Project) (Kanban, bool) {
+	if k.project.ID == 0 || load.ProjectID != k.project.ID || load.Generation != k.loadGen {
+		return k, false
+	}
+	return k.WithProject(p), true
+}
+
+// WithProject takes the project, with the tabs, the Assignees and the Unknown
+// tab following it.
+func (k Kanban) WithProject(p domain.Project) Kanban {
+	k.project = p
+	return k.regrouped()
 }
 
 // Loaded reports whether the User Stories are loaded.
@@ -198,6 +244,7 @@ func (k Kanban) withStories(stories []domain.UserStory) Kanban {
 // the previous one.
 func (k Kanban) regrouped() Kanban {
 	old := k.byStatus
+	k = k.withTabs()
 	k.cursor = maps.Clone(k.cursor) // never share the map with the receiver
 	k.byStatus = map[int64][]domain.UserStory{}
 	for _, s := range k.stories {
@@ -206,7 +253,11 @@ func (k Kanban) regrouped() Kanban {
 		if k.mine && !s.AssignedTo(k.me) {
 			continue
 		}
-		k.byStatus[s.Status] = append(k.byStatus[s.Status], s)
+		key := s.Status
+		if !k.project.KnowsUserStoryStatus(key) {
+			key = unknownTab
+		}
+		k.byStatus[key] = append(k.byStatus[key], s)
 	}
 	for _, list := range k.byStatus {
 		slices.SortStableFunc(list, func(a, b domain.UserStory) int { return cmp.Compare(a.KanbanOrder, b.KanbanOrder) })

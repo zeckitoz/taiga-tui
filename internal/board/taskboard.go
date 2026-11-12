@@ -31,6 +31,23 @@ type Taskboard struct {
 	descriptions descriptions
 }
 
+// hasUnknownIDs reports whether the content refers to Statuses or Team
+// Members the project does not know.
+func (t Taskboard) hasUnknownIDs() bool {
+	p := t.project
+	return slices.ContainsFunc(t.content.UserStories, func(s domain.UserStory) bool {
+		return !p.KnowsUserStoryStatus(s.Status) || !p.KnowsMembers(s.Assignees)
+	}) || slices.ContainsFunc(t.content.Tasks, func(task domain.Task) bool {
+		return !p.KnowsTaskStatus(task.Status) || task.Assignee != 0 && !p.KnowsMembers([]int64{task.Assignee})
+	})
+}
+
+// withProject takes the reloaded project.
+func (t Taskboard) withProject(p domain.Project) Taskboard {
+	t.project = p
+	return t.regrouped()
+}
+
 // group is a User Story with its Tasks in Taskboard order. The group of
 // Tasks without User Story has the zero User Story. tasks are the Tasks the
 // group shows, which are fewer than allTasks while only the Team Member's work
