@@ -21,6 +21,11 @@ type staticToken string
 
 func (s staticToken) Token(context.Context) (string, error) { return string(s), nil }
 
+// Refresh fails like a rejected refresh token: a staticToken cannot be renewed.
+func (s staticToken) Refresh(context.Context, string) (string, error) {
+	return "", taiga.ErrSessionExpired
+}
+
 // fixtureServer answers each path with the fixture file named in routes and
 // records the requests it receives.
 func newFixtureServer(t *testing.T, routes map[string]string) *testServer {
@@ -565,6 +570,136 @@ func TestClientPassesTokenSourceFailureOn(t *testing.T) {
 type failingToken struct{}
 
 func (failingToken) Token(context.Context) (string, error) { return "", taiga.ErrSessionExpired }
+
+func (failingToken) Refresh(context.Context, string) (string, error) {
+	return "", taiga.ErrSessionExpired
+}
+
+// rotatingToken hands out "old", then "new" after a refresh, and records the
+// stale tokens it is asked to refresh.
+type rotatingToken struct {
+	mu         sync.Mutex
+	current    string
+	stale      []string
+	refreshErr error
+}
+
+func (r *rotatingToken) Token(context.Context) (string, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.current, nil
+}
+
+func (r *rotatingToken) Refresh(_ context.Context, stale string) (string, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.stale = append(r.stale, stale)
+	if r.refreshErr != nil {
+		return "", r.refreshErr
+	}
+	r.current = "new"
+	return r.current, nil
+}
+
+// bearerServer accepts only the bearer token ok and answers 401 to any other,
+// and records the method, token and body of every request.
+type bearerServer struct {
+	*httptest.Server
+	mu   sync.Mutex
+	seen []string
+}
+
+func newBearerServer(t *testing.T, ok string) *bearerServer {
+	t.Helper()
+	bs := &bearerServer{}
+	bs.Server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		bs.mu.Lock()
+		bs.seen = append(bs.seen, r.Method+" "+r.Header.Get("Authorization")+" "+string(body))
+		bs.mu.Unlock()
+		if r.Header.Get("Authorization") != "Bearer "+ok {
+			w.WriteHeader(http.StatusUnauthorized)
+			_, _ = w.Write([]byte(`{"detail": "Given token not valid"}`))
+			return
+		}
+		_, _ = w.Write([]byte(`{"id": 42, "username": "alice", "version": 1}`))
+	}))
+	t.Cleanup(bs.Close)
+	return bs
+}
+
+func TestClientRefreshesOnceOn401AndRepeatsTheRequest(t *testing.T) {
+	srv := newBearerServer(t, "new")
+	tokens := &rotatingToken{current: "old"}
+
+	got, err := taiga.NewClient(srv.URL, tokens).Me(t.Context())
+
+	if err != nil || got.ID != 42 {
+		t.Fatalf("got %+v, %v", got, err)
+	}
+	if !reflect.DeepEqual(tokens.stale, []string{"old"}) {
+		t.Errorf("refreshed with %v, want the stale token once", tokens.stale)
+	}
+	want := []string{"GET Bearer old ", "GET Bearer new "}
+	if !reflect.DeepEqual(srv.seen, want) {
+		t.Errorf("requests %q, want %q", srv.seen, want)
+	}
+}
+
+func TestClientRepeatsTheBodyOfAPatchAfterRefresh(t *testing.T) {
+	srv := newBearerServer(t, "new")
+	tokens := &rotatingToken{current: "old"}
+
+	_, err := taiga.NewClient(srv.URL, tokens).PatchTask(t.Context(), 9891, 3, domain.TaskPatch{Status: 2452})
+
+	if err != nil {
+		t.Fatal(err)
+	}
+	const body = `{"status":2452,"version":3}`
+	want := []string{"PATCH Bearer old " + body, "PATCH Bearer new " + body}
+	if !reflect.DeepEqual(srv.seen, want) {
+		t.Errorf("requests %q, want %q", srv.seen, want)
+	}
+}
+
+func TestClientReportsExpiredSessionWhenRefreshIsRejected(t *testing.T) {
+	srv := newBearerServer(t, "new")
+	tokens := &rotatingToken{current: "old", refreshErr: taiga.ErrSessionExpired}
+
+	_, err := taiga.NewClient(srv.URL, tokens).Me(t.Context())
+
+	if !errors.Is(err, taiga.ErrSessionExpired) {
+		t.Errorf("got %v, want ErrSessionExpired", err)
+	}
+	if len(srv.seen) != 1 {
+		t.Errorf("request repeated after a failed refresh: %q", srv.seen)
+	}
+}
+
+func TestClientKeepsRefreshFailureThatIsNotAnExpiredSession(t *testing.T) {
+	srv := newBearerServer(t, "new")
+	tokens := &rotatingToken{current: "old", refreshErr: taiga.ErrUnreachable}
+
+	_, err := taiga.NewClient(srv.URL, tokens).Me(t.Context())
+
+	if !errors.Is(err, taiga.ErrUnreachable) {
+		t.Errorf("got %v, want ErrUnreachable", err)
+	}
+}
+
+func TestClientRefreshesAndRepeatsOnlyOnce(t *testing.T) {
+	srv := newBearerServer(t, "never")
+	tokens := &rotatingToken{current: "old"}
+
+	_, err := taiga.NewClient(srv.URL, tokens).Me(t.Context())
+
+	if !errors.Is(err, taiga.ErrSessionExpired) {
+		t.Errorf("got %v, want ErrSessionExpired", err)
+	}
+	if len(tokens.stale) != 1 || len(srv.seen) != 2 {
+		t.Errorf("%d refreshes and %d requests, want 1 and 2", len(tokens.stale), len(srv.seen))
+	}
+}
 
 func TestProjectWithoutModifyPermissions(t *testing.T) {
 	srv := newInlineServer(t, `{"id": 1, "my_permissions": ["view_us", "view_tasks"]}`)

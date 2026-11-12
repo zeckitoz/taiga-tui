@@ -45,6 +45,9 @@ type TokenSource interface {
 	// Token returns the current access token, or ErrSessionExpired if there
 	// is none.
 	Token(ctx context.Context) (string, error)
+	// Refresh returns a new access token after the server rejected stale. It
+	// returns ErrSessionExpired if the session cannot be renewed.
+	Refresh(ctx context.Context, stale string) (string, error)
 }
 
 // Client is the authenticated part of the Taiga API.
@@ -429,30 +432,64 @@ func (c *Client) patch(ctx context.Context, path string, body, dst any) error {
 }
 
 // do sends req with the access token and decodes the JSON response into dst.
+// If the server rejects the token, it asks the token source to refresh it once
+// and repeats the request once with the new token.
 func (c *Client) do(req *http.Request, dst any) error {
 	token, err := c.tokens.Token(req.Context())
 	if err != nil {
 		return err
 	}
-	req.Header.Set("Authorization", "Bearer "+token)
-	req.Header.Set("Accept", "application/json")
-
-	resp, err := c.http.Do(req)
-	if err != nil {
-		return transportError(err)
+	code, data, err := c.send(req, token)
+	if err == nil && code == http.StatusUnauthorized {
+		token, err = c.tokens.Refresh(req.Context(), token)
+		if err != nil {
+			return err
+		}
+		if req, err = repeatable(req); err != nil {
+			return err
+		}
+		code, data, err = c.send(req, token)
 	}
-	defer func() { _ = resp.Body.Close() }()
-	data, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return transportError(err)
+		return err
 	}
-	if err := statusError(resp.StatusCode, data); err != nil {
+	if err := statusError(code, data); err != nil {
 		return err
 	}
 	if err := json.Unmarshal(data, dst); err != nil {
 		return fmt.Errorf("%w: %w", ErrUnexpected, err)
 	}
 	return nil
+}
+
+// send sends req with the access token and returns the status code and the
+// response body.
+func (c *Client) send(req *http.Request, token string) (int, []byte, error) {
+	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("Accept", "application/json")
+	resp, err := c.http.Do(req)
+	if err != nil {
+		return 0, nil, transportError(err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	data, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return 0, nil, transportError(err)
+	}
+	return resp.StatusCode, data, nil
+}
+
+// repeatable returns a copy of req with a fresh body, to send it again.
+func repeatable(req *http.Request) (*http.Request, error) {
+	again := req.Clone(req.Context())
+	if req.GetBody != nil {
+		body, err := req.GetBody()
+		if err != nil {
+			return nil, err
+		}
+		again.Body = body
+	}
+	return again, nil
 }
 
 // statusError maps a non-2xx response of an authenticated call to a typed error.

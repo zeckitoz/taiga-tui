@@ -270,6 +270,15 @@ type fakeAuth struct {
 	result             taiga.LoginResult
 	err                error
 	username, password string
+
+	refreshed    taiga.Tokens
+	refreshErr   error
+	refreshCalls []string // the refresh tokens sent
+}
+
+func (f *fakeAuth) Refresh(_ context.Context, refresh string) (taiga.Tokens, error) {
+	f.refreshCalls = append(f.refreshCalls, refresh)
+	return f.refreshed, f.refreshErr
 }
 
 func (f *fakeAuth) Login(_ context.Context, username, password string) (taiga.LoginResult, error) {
@@ -371,12 +380,179 @@ func TestTokenHandsOutAccessTokenOfSavedLogin(t *testing.T) {
 }
 
 func TestTokenReportsExpiredSession(t *testing.T) {
-	m := newManager(t, &fakeAuth{}, newMemStore(), t.TempDir())
+	m := newManager(t, &fakeAuth{refreshErr: taiga.ErrSessionExpired}, newMemStore(), t.TempDir())
 	if _, err := m.Save(loginResult(now)); err != nil {
 		t.Fatal(err)
 	}
 
 	if _, err := m.Token(t.Context()); !errors.Is(err, taiga.ErrSessionExpired) {
 		t.Errorf("got %v, want ErrSessionExpired", err)
+	}
+}
+
+// rotated is what the instance answers to a refresh.
+func rotated() taiga.Tokens {
+	return taiga.Tokens{Access: jwt(now.Add(24 * time.Hour)), Refresh: jwt(now.Add(8 * 24 * time.Hour))}
+}
+
+func TestTokenRefreshesAnExpiredAccessToken(t *testing.T) {
+	auth := &fakeAuth{refreshed: rotated()}
+	kr := newMemStore()
+	m := newManager(t, auth, kr, t.TempDir())
+	login := loginResult(now.Add(-time.Minute))
+	if _, err := m.Save(login); err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := m.Token(t.Context())
+
+	if err != nil || got != auth.refreshed.Access {
+		t.Fatalf("got %q, %v", got, err)
+	}
+	if len(auth.refreshCalls) != 1 || auth.refreshCalls[0] != login.Tokens.Refresh {
+		t.Errorf("refreshed with %q, want the stored refresh token once", auth.refreshCalls)
+	}
+	if kr.data[host+"/alice/access"] != auth.refreshed.Access || kr.data[host+"/alice/refresh"] != auth.refreshed.Refresh {
+		t.Errorf("the new tokens were not stored: %v", kr.data)
+	}
+}
+
+func TestTokenDoesNotRefreshAnUnexpiredAccessToken(t *testing.T) {
+	auth := &fakeAuth{refreshed: rotated()}
+	m := newManager(t, auth, newMemStore(), t.TempDir())
+	if _, err := m.Save(loginResult(now.Add(time.Minute))); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := m.Token(t.Context()); err != nil || len(auth.refreshCalls) != 0 {
+		t.Errorf("got %v after %d refreshes", err, len(auth.refreshCalls))
+	}
+}
+
+func TestResumeWithExpiredAccessTokenNeedsAnUnexpiredRefreshToken(t *testing.T) {
+	for name, tt := range map[string]struct {
+		refresh string
+		want    bool
+	}{
+		"refresh token valid":   {refresh: jwt(now.Add(time.Hour)), want: true},
+		"refresh token expired": {refresh: jwt(now.Add(-time.Hour))},
+		"no refresh token":      {},
+	} {
+		t.Run(name, func(t *testing.T) {
+			kr := newMemStore()
+			kr.data[host+"/alice/access"] = jwt(now.Add(-time.Hour))
+			if tt.refresh != "" {
+				kr.data[host+"/alice/refresh"] = tt.refresh
+			}
+			m := newManager(t, &fakeAuth{}, kr, t.TempDir())
+
+			if got := m.Resume("alice"); got != tt.want {
+				t.Errorf("got %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestRefreshSkipsTheCallWhenAnotherInstanceAlreadyRotatedTheTokens(t *testing.T) {
+	auth := &fakeAuth{refreshed: rotated()}
+	kr := newMemStore()
+	m := newManager(t, auth, kr, t.TempDir())
+	stale := loginResult(now.Add(-time.Minute))
+	if _, err := m.Save(stale); err != nil {
+		t.Fatal(err)
+	}
+	// The other instance stored fresh tokens after this one read its token.
+	fresh := rotated()
+	kr.data[host+"/alice/access"] = fresh.Access
+	kr.data[host+"/alice/refresh"] = fresh.Refresh
+
+	got, err := m.Refresh(t.Context(), stale.Tokens.Access)
+
+	if err != nil || got != fresh.Access {
+		t.Errorf("got %q, %v, want the stored token", got, err)
+	}
+	if len(auth.refreshCalls) != 0 {
+		t.Errorf("refreshed although the tokens were rotated: %q", auth.refreshCalls)
+	}
+}
+
+func TestRefreshRefreshesWhenTheStoredTokenIsTheRejectedOne(t *testing.T) {
+	// The server rejected an access token that has not expired yet.
+	auth := &fakeAuth{refreshed: rotated()}
+	m := newManager(t, auth, newMemStore(), t.TempDir())
+	login := loginResult(now.Add(time.Hour))
+	if _, err := m.Save(login); err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := m.Refresh(t.Context(), login.Tokens.Access)
+
+	if err != nil || got != auth.refreshed.Access {
+		t.Errorf("got %q, %v", got, err)
+	}
+}
+
+func TestRefreshFailures(t *testing.T) {
+	unreachable := fmt.Errorf("%w: down", taiga.ErrUnreachable)
+	tests := []struct {
+		name       string
+		refreshErr error
+		noRefresh  bool
+		want       error
+	}{
+		{name: "rejected refresh token", refreshErr: taiga.ErrSessionExpired, want: taiga.ErrSessionExpired},
+		{name: "no refresh token stored", noRefresh: true, want: taiga.ErrSessionExpired},
+		{name: "instance unreachable", refreshErr: unreachable, want: taiga.ErrUnreachable},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			auth := &fakeAuth{refreshErr: tt.refreshErr}
+			kr := newMemStore()
+			m := newManager(t, auth, kr, t.TempDir())
+			login := loginResult(now.Add(-time.Minute))
+			if _, err := m.Save(login); err != nil {
+				t.Fatal(err)
+			}
+			if tt.noRefresh {
+				delete(kr.data, host+"/alice/refresh")
+			}
+
+			_, err := m.Refresh(t.Context(), login.Tokens.Access)
+
+			if !errors.Is(err, tt.want) {
+				t.Errorf("got %v, want %v", err, tt.want)
+			}
+			if kr.data[host+"/alice/access"] != login.Tokens.Access && !tt.noRefresh {
+				t.Error("the stored tokens changed although the refresh failed")
+			}
+		})
+	}
+}
+
+func TestRefreshWithoutActiveSessionReportsExpiredSession(t *testing.T) {
+	m := newManager(t, &fakeAuth{}, newMemStore(), t.TempDir())
+
+	if _, err := m.Refresh(t.Context(), "stale"); !errors.Is(err, taiga.ErrSessionExpired) {
+		t.Errorf("got %v, want ErrSessionExpired", err)
+	}
+}
+
+func TestRefreshStoresTheNewTokensInTheFileWhenTheKeyringFails(t *testing.T) {
+	auth := &fakeAuth{refreshed: rotated()}
+	dir := t.TempDir()
+	kr := newMemStore()
+	m := newManager(t, auth, kr, dir)
+	login := loginResult(now.Add(-time.Minute))
+	if _, err := m.Save(login); err != nil {
+		t.Fatal(err)
+	}
+	kr.setErr = errors.New("keyring locked")
+
+	if _, err := m.Refresh(t.Context(), login.Tokens.Access); err != nil {
+		t.Fatal(err)
+	}
+
+	if got, _ := session.NewFileStore(dir).Get(host + "/alice/refresh"); got != auth.refreshed.Refresh {
+		t.Errorf("refresh token in file: %q", got)
 	}
 }

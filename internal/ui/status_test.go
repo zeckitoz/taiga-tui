@@ -172,17 +172,6 @@ func TestFailedSaveUndoesChangeAndShowsErrorUntilNextAction(t *testing.T) {
 	}
 }
 
-func TestExpiredSessionDuringSaveShowsLogin(t *testing.T) {
-	h := onKanban(t, 100, 24)
-	h.taiga.FailNext("PatchUserStory", taiga.ErrSessionExpired)
-
-	pickStatus(h, "ready")
-
-	if h.app.screen != screenLogin {
-		t.Errorf("screen %v", h.app.screen)
-	}
-}
-
 func TestSaveResultAfterBoardSwitchIsIgnored(t *testing.T) {
 	h := onKanban(t, 100, 24)
 	h.taiga.FailNext("PatchUserStory", taiga.ErrConflict)

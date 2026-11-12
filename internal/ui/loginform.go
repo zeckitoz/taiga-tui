@@ -33,9 +33,12 @@ type loginForm struct {
 	password textinput.Model
 	focus    int
 	err      string
-	busy     string // non-empty while a request runs
-	spinner  spinner
-	width    int // content width
+	// expired is set for the dialog that opens over the board when the
+	// session ran out.
+	expired bool
+	busy    string // non-empty while a request runs
+	spinner spinner
+	width   int // content width
 }
 
 func newLoginForm(host, prefill string, tick TickFunc) loginForm {
@@ -165,11 +168,17 @@ func (f *loginForm) view() string {
 		status = errorStyle.Render(f.err)
 	}
 	help := "enter log in · tab switch field · esc quit"
+	if f.expired {
+		help = "enter log in · tab field · esc keep board"
+	}
 	if f.busy != "" {
 		help = "ctrl+c quit"
 	}
-	lines := []string{
-		titleStyle.Render("Log in to " + f.host),
+	lines := []string{titleStyle.Render("Log in to " + f.host)}
+	if f.expired {
+		lines = append(lines, faintStyle.Render("Your session has expired"))
+	}
+	lines = append(lines,
 		"",
 		label(fieldLogin, "Username or email"),
 		f.login.View(),
@@ -180,7 +189,7 @@ func (f *loginForm) view() string {
 		status,
 		"",
 		faintStyle.Render(help),
-	}
+	)
 	content := lipgloss.NewStyle().Width(f.width).Render(strings.Join(lines, "\n"))
 	return dialogStyle.Render(content)
 }
