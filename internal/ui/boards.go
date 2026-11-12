@@ -33,8 +33,8 @@ type boardView struct {
 	// pickStatus moves it to one of them.
 	statusOptions func(App) (board.StatusOptions, error)
 	pickStatus    func(App, int64) (App, board.Effect, error)
-	// takeOver makes the Team Member the Assignee of the selected row.
-	takeOver func(App, board.ConfirmTakeOver) (App, board.Effect, error)
+	// assignToMe makes the Team Member the Assignee of the selected row.
+	assignToMe func(App, board.ConfirmAssignToMe) (App, board.Effect, error)
 	// scroll keeps the selected row visible.
 	scroll func(*App)
 	// path is the header after the project name.
@@ -60,7 +60,7 @@ func boardOps(b config.Board) boardView {
 			changeStatus:  App.changeTaskboardStatus,
 			statusOptions: App.statusOptionsTaskboard,
 			pickStatus:    App.pickTaskboardStatus,
-			takeOver:      App.takeOverTaskboard,
+			assignToMe:    App.assignToMeTaskboard,
 			savedResult:   App.taskboardSaved,
 			dropSaves: func(a App) App {
 				return a.withTaskboard(board.Taskboard.DropSaves)
@@ -83,7 +83,7 @@ func boardOps(b config.Board) boardView {
 		changeStatus:  App.changeKanbanStatus,
 		statusOptions: App.statusOptionsKanban,
 		pickStatus:    App.pickKanbanStatus,
-		takeOver:      App.takeOverKanban,
+		assignToMe:    App.assignToMeKanban,
 		savedResult:   App.kanbanSaved,
 		dropSaves: func(a App) App {
 			a.kanban = a.kanban.DropSaves()

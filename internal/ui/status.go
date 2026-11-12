@@ -14,20 +14,20 @@ import (
 	"github.com/zeckitoz/taiga-tui/internal/taiga"
 )
 
-// takeOver makes the Team Member the Assignee of the selected row of the
+// assignToMe makes the Team Member the Assignee of the selected row of the
 // board shown, or tells why it cannot. If that replaces the Assignee of a
 // Task, it asks first and waits for the answer to the question.
-func (a App) takeOver(confirmed board.ConfirmTakeOver) (App, tea.Cmd) {
-	return a.applyChange(func(a App) (App, board.Effect, error) { return a.shownBoard().takeOver(a, confirmed) })
+func (a App) assignToMe(confirmed board.ConfirmAssignToMe) (App, tea.Cmd) {
+	return a.applyChange(func(a App) (App, board.Effect, error) { return a.shownBoard().assignToMe(a, confirmed) })
 }
 
-// answerTakeOver handles the key that answers the question of a Take Over:
+// answerAssignToMe handles the key that answers the question of an Assign to me:
 // y replaces the Assignee, any other key keeps them.
-func (a App) answerTakeOver(key tea.KeyPressMsg) (App, tea.Cmd) {
+func (a App) answerAssignToMe(key tea.KeyPressMsg) (App, tea.Cmd) {
 	asked := *a.asked
 	a.asked = nil
 	if key.String() == "y" {
-		return a.takeOver(asked)
+		return a.assignToMe(asked)
 	}
 	return a, nil
 }
@@ -44,9 +44,9 @@ func (a App) pickStatus(id int64) (App, tea.Cmd) {
 	return a.applyChange(func(a App) (App, board.Effect, error) { return a.shownBoard().pickStatus(a, id) })
 }
 
-// applyChange makes a Status Change or Take Over on the board shown through
+// applyChange makes a Status Change or Assign to me on the board shown through
 // change. It is the one path of the keys for the next or previous Status,
-// the picker and Take Over.
+// the picker and Assign to me.
 func (a App) applyChange(change func(App) (App, board.Effect, error)) (App, tea.Cmd) {
 	a, eff, err := change(a)
 	if err != nil {
@@ -64,7 +64,7 @@ func (a App) runEffect(eff board.Effect, on config.Board) (App, tea.Cmd) {
 	case board.Save:
 		a.sent = a.sent.Add(e)
 		return a, saveChange(a.deps.Taiga, e, on)
-	case board.ConfirmTakeOver:
+	case board.ConfirmAssignToMe:
 		a.asked = &e
 		a.status = append(a.status, statusMsg{text: "Replace " + plainText(e.Name) + " as assignee? y/n", hint: true})
 	case board.ReloadBoard:
@@ -159,23 +159,23 @@ func saveFailure(ref int, err error) statusMsg {
 	return statusMsg{text: "Couldn't save " + item + ": " + reason(err), isErr: true, hint: true}
 }
 
-// takeOverKanban makes the Team Member an Assignee of the selected User
+// assignToMeKanban makes the Team Member an Assignee of the selected User
 // Story of the Kanban Board.
-func (a App) takeOverKanban(board.ConfirmTakeOver) (App, board.Effect, error) {
+func (a App) assignToMeKanban(board.ConfirmAssignToMe) (App, board.Effect, error) {
 	var eff board.Effect
 	var err error
-	a.kanban, eff, err = a.kanban.TakeOver(a.sent)
+	a.kanban, eff, err = a.kanban.AssignToMe(a.sent)
 	return a, eff, err
 }
 
-// takeOverTaskboard makes the Team Member the Assignee of the selected row
+// assignToMeTaskboard makes the Team Member the Assignee of the selected row
 // of the Taskboard.
-func (a App) takeOverTaskboard(confirmed board.ConfirmTakeOver) (App, board.Effect, error) {
+func (a App) assignToMeTaskboard(confirmed board.ConfirmAssignToMe) (App, board.Effect, error) {
 	tb, ok := a.sprints.Taskboard()
 	if !ok {
 		return a, nil, nil
 	}
-	tb, eff, err := tb.TakeOver(a.sent, confirmed)
+	tb, eff, err := tb.AssignToMe(a.sent, confirmed)
 	a.sprints = a.sprints.WithTaskboard(tb)
 	return a, eff, err
 }

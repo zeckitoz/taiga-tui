@@ -22,7 +22,7 @@ const (
 )
 
 // Save is the effect of saving a change of an item: a Status Change or a
-// Take Over. Its result goes back into Saved, TaskSaved or UserStorySaved,
+// Assign to me. Its result goes back into Saved, TaskSaved or UserStorySaved,
 // or into NotSaved.
 type Save struct {
 	Kind ItemKind
@@ -30,9 +30,9 @@ type Save struct {
 	Ref  int
 	// Version is that of the item as last loaded.
 	Version int
-	// Status is the new Status of a Status Change, 0 for a Take Over.
+	// Status is the new Status of a Status Change, 0 for an Assign to me.
 	Status int64
-	// Assignee is the new main Assignee of a Take Over, 0 for a Status
+	// Assignee is the new main Assignee of an Assign to me, 0 for a Status
 	// Change. Assignees are all Assignees of a User Story after a Take
 	// Over, the main one first; they are nil for a Task.
 	Assignee  int64
@@ -77,7 +77,7 @@ type Rejection string
 
 func (r Rejection) Error() string { return string(r) }
 
-// The rejections of a Status Change and a Take Over.
+// The rejections of a Status Change and an Assign to me.
 const (
 	ErrStillSaving     Rejection = "Still saving…"
 	ErrFirstStatus     Rejection = "Already in first status"
@@ -86,18 +86,18 @@ const (
 	ErrAlreadyAssigned Rejection = "Already assigned to you"
 )
 
-// ConfirmTakeOver is what a Take Over returns instead of an effect when it
+// ConfirmAssignToMe is what an Assign to me returns instead of an effect when it
 // would displace the Assignee of a Task: the Team Member has to confirm
 // first. It names the Task, the Assignee to replace and their Name. Passing
-// it back to the Take Over confirms it, as long as the Task still has that
+// it back to the Assign to me confirms it, as long as the Task still has that
 // Assignee.
-type ConfirmTakeOver struct {
+type ConfirmAssignToMe struct {
 	ID       int64
 	Assignee int64
 	Name     string
 }
 
-func (ConfirmTakeOver) isEffect() {}
+func (ConfirmAssignToMe) isEffect() {}
 
 // noPermission is the rejection of a change to an item of kind the Team
 // Member may not modify.
@@ -194,7 +194,7 @@ func (s Sent) saving(kind ItemKind, id int64) bool {
 	return ok
 }
 
-// workItem is what a Status Change or Take Over needs to know of a User
+// workItem is what a Status Change or Assign to me needs to know of a User
 // Story or Task.
 type workItem struct {
 	kind    ItemKind
@@ -289,12 +289,12 @@ func (s saves) changeStatus(p domain.Project, sent Sent, it workItem, to target)
 	return sv, save, nil
 }
 
-// takeOver starts the Take Over of it by the Team Member with ID me, unless
+// assignToMe starts assigning it to the Team Member with ID me, unless
 // the Team Member may not change it, a save of it is still waiting for its
 // result in sent, or they are an Assignee already. It returns the effect
-// ConfirmTakeOver instead if the Task has another Assignee and the Team
+// ConfirmAssignToMe instead if the Task has another Assignee and the Team
 // Member has not confirmed replacing them.
-func (s saves) takeOver(p domain.Project, me int64, sent Sent, it workItem, confirmed ConfirmTakeOver) (saves, Effect, error) {
+func (s saves) assignToMe(p domain.Project, me int64, sent Sent, it workItem, confirmed ConfirmAssignToMe) (saves, Effect, error) {
 	if err := s.refusal(p, sent, it); err != nil {
 		return s, nil, err
 	}
@@ -304,7 +304,7 @@ func (s saves) takeOver(p domain.Project, me int64, sent Sent, it workItem, conf
 	save := Save{Kind: it.kind, ID: it.id, Ref: it.ref, Version: it.version, Assignee: me}
 	if it.kind == TaskItem {
 		if len(it.assignees) > 0 {
-			ask := ConfirmTakeOver{ID: it.id, Assignee: it.assignees[0], Name: memberName(p, it.assignees[0])}
+			ask := ConfirmAssignToMe{ID: it.id, Assignee: it.assignees[0], Name: memberName(p, it.assignees[0])}
 			if confirmed != ask {
 				return s, ask, nil
 			}

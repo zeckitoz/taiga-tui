@@ -211,7 +211,7 @@ The server-side parameters above are the fallback if boards ever get large.
 
 ## Open points for the map
 
-- Status Change and Take Over (write path): `PATCH /userstories/{id}` and `PATCH /tasks/{id}` with `version` for optimistic concurrency, plus the bulk order endpoints the web UI uses on drop (`bulk_update_kanban_order`, `bulk_update_taskboard_order`).
+- Status Change and Assign to me (write path): `PATCH /userstories/{id}` and `PATCH /tasks/{id}` with `version` for optimistic concurrency, plus the bulk order endpoints the web UI uses on drop (`bulk_update_kanban_order`, `bulk_update_taskboard_order`).
   Whether a Status Change from the TUI must also set the card's position (`kanban_order`/`taskboard_order`) or can leave the backend default is not answered here.
 - Whether a closed Sprint whose date range contains today still counts as the Current Sprint, and what to show when several Sprints overlap or none matches.
 - Realtime updates: the instance exposes `wss://taiga-fki.ostfalia.de/events` (from `conf.json`); the web UI reloads boards on events.

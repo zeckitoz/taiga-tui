@@ -303,17 +303,17 @@ func (k Kanban) change(to target, sent Sent) (Kanban, Effect, error) {
 	return k.regrouped().follow(it.id, save.Status), save, nil
 }
 
-// TakeOver makes the Team Member the Assignee of the selected User Story
+// AssignToMe makes the Team Member the Assignee of the selected User Story
 // right away, keeping the other Assignees, and returns the effect of saving
 // the change, which the App records in sent once it sends it. It returns a
 // Rejection instead if the change cannot be made, and neither if no User
 // Story is selected.
-func (k Kanban) TakeOver(sent Sent) (Kanban, Effect, error) {
+func (k Kanban) AssignToMe(sent Sent) (Kanban, Effect, error) {
 	it, ok := k.selectedItem()
 	if !ok {
 		return k, nil, nil
 	}
-	sv, eff, err := k.saves.takeOver(k.project, k.me, sent, it, ConfirmTakeOver{})
+	sv, eff, err := k.saves.assignToMe(k.project, k.me, sent, it, ConfirmAssignToMe{})
 	if err != nil {
 		return k, nil, err
 	}

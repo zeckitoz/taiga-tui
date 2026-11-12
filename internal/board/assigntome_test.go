@@ -9,22 +9,22 @@ import (
 	"github.com/zeckitoz/taiga-tui/internal/domain"
 )
 
-// takeOverTaskboard takes over the selected row and fails the test unless it
+// assignToMeTaskboard assigns the selected row to me and fails the test unless it
 // asks to save it.
-func takeOverTaskboard(t *testing.T, tb board.Taskboard, confirmed board.ConfirmTakeOver) (board.Taskboard, board.Save) {
+func assignToMeTaskboard(t *testing.T, tb board.Taskboard, confirmed board.ConfirmAssignToMe) (board.Taskboard, board.Save) {
 	t.Helper()
-	tb, eff, err := tb.TakeOver(nothingSent, confirmed)
+	tb, eff, err := tb.AssignToMe(nothingSent, confirmed)
 	save, ok := eff.(board.Save)
 	if err != nil || !ok {
-		t.Fatalf("TakeOver: effect %#v, error %v", eff, err)
+		t.Fatalf("AssignToMe: effect %#v, error %v", eff, err)
 	}
 	return tb, save
 }
 
-func TestKanbanTakeOverKeepsOtherAssigneesAndPutsMeFirst(t *testing.T) {
+func TestKanbanAssignToMeKeepsOtherAssigneesAndPutsMeFirst(t *testing.T) {
 	k := board.NewKanban(project, stories, me).CursorDown() // #3, assigned to Carla
 
-	k, eff, err := k.TakeOver(nothingSent)
+	k, eff, err := k.AssignToMe(nothingSent)
 
 	want := board.Save{Kind: board.UserStoryItem, ID: 12, Ref: 3, Generation: 1, Assignee: me, Assignees: []int64{me, 44}}
 	if err != nil || !reflect.DeepEqual(eff, want) {
@@ -36,10 +36,10 @@ func TestKanbanTakeOverKeepsOtherAssigneesAndPutsMeFirst(t *testing.T) {
 	}
 }
 
-func TestKanbanTakeOverOfUnassignedUserStory(t *testing.T) {
+func TestKanbanAssignToMeOfUnassignedUserStory(t *testing.T) {
 	k := board.NewKanban(project, stories, me).CursorDown().CursorDown() // #1, nobody
 
-	_, eff, err := k.TakeOver(nothingSent)
+	_, eff, err := k.AssignToMe(nothingSent)
 
 	save, _ := eff.(board.Save)
 	if err != nil || save.Assignee != me || !reflect.DeepEqual(save.Assignees, []int64{me}) || save.Version != 0 {
@@ -47,7 +47,7 @@ func TestKanbanTakeOverOfUnassignedUserStory(t *testing.T) {
 	}
 }
 
-func TestKanbanTakeOverRejections(t *testing.T) {
+func TestKanbanAssignToMeRejections(t *testing.T) {
 	p := project
 	p.Permissions.ModifyUserStory = false
 	saving, _ := changeKanban(t, board.NewKanban(project, stories, me))
@@ -62,7 +62,7 @@ func TestKanbanTakeOverRejections(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			k, eff, err := tt.k.TakeOver(nothingSent)
+			k, eff, err := tt.k.AssignToMe(nothingSent)
 			if err == nil || err.Error() != tt.want || eff != nil {
 				t.Errorf("got %#v, %v, want %q", eff, err, tt.want)
 			}
@@ -76,9 +76,9 @@ func TestKanbanTakeOverRejections(t *testing.T) {
 	}
 }
 
-func TestKanbanTakeOverUndoneOnFailureAndKeptOnSuccess(t *testing.T) {
+func TestKanbanAssignToMeUndoneOnFailureAndKeptOnSuccess(t *testing.T) {
 	k := board.NewKanban(project, stories, me).CursorDown()
-	k, eff, _ := k.TakeOver(nothingSent)
+	k, eff, _ := k.AssignToMe(nothingSent)
 	save := eff.(board.Save)
 
 	undone, reload, ok := k.NotSaved(save, board.SaveConflict)
@@ -91,10 +91,10 @@ func TestKanbanTakeOverUndoneOnFailureAndKeptOnSuccess(t *testing.T) {
 	}
 }
 
-func TestTaskboardTakeOverOfUnassignedTask(t *testing.T) {
+func TestTaskboardAssignToMeOfUnassignedTask(t *testing.T) {
 	tb := press(newTaskboard(), down, down, down, down, down, down, down, down) // T#40, nobody
 
-	tb, save := takeOverTaskboard(t, tb, board.ConfirmTakeOver{})
+	tb, save := assignToMeTaskboard(t, tb, board.ConfirmAssignToMe{})
 
 	if save.Kind != board.TaskItem || save.ID != 904 || save.Ref != 40 || save.Assignee != me || save.Assignees != nil || save.Status != 0 {
 		t.Errorf("save %+v", save)
@@ -104,18 +104,18 @@ func TestTaskboardTakeOverOfUnassignedTask(t *testing.T) {
 	}
 }
 
-func TestTaskboardTakeOverAsksBeforeReplacingAnotherAssignee(t *testing.T) {
+func TestTaskboardAssignToMeAsksBeforeReplacingAnotherAssignee(t *testing.T) {
 	tb := press(newTaskboard(), down, down, down) // T#32, Bea (43)
 
-	asked, eff, err := tb.TakeOver(nothingSent, board.ConfirmTakeOver{})
+	asked, eff, err := tb.AssignToMe(nothingSent, board.ConfirmAssignToMe{})
 
-	if err != nil || eff != (board.ConfirmTakeOver{ID: 902, Assignee: 43, Name: "bkoch"}) {
+	if err != nil || eff != (board.ConfirmAssignToMe{ID: 902, Assignee: 43, Name: "bkoch"}) {
 		t.Fatalf("got %#v, %v", eff, err)
 	}
 	if !reflect.DeepEqual(asked.Rows(), tb.Rows()) {
 		t.Error("changed the board before the answer")
 	}
-	tb, save := takeOverTaskboard(t, tb, eff.(board.ConfirmTakeOver))
+	tb, save := assignToMeTaskboard(t, tb, eff.(board.ConfirmAssignToMe))
 	if save.Assignee != me || save.ID != 902 {
 		t.Errorf("save %+v", save)
 	}
@@ -124,21 +124,21 @@ func TestTaskboardTakeOverAsksBeforeReplacingAnotherAssignee(t *testing.T) {
 	}
 }
 
-func TestTaskboardTakeOverAsksAgainIfTheAssigneeChangedSinceTheQuestion(t *testing.T) {
+func TestTaskboardAssignToMeAsksAgainIfTheAssigneeChangedSinceTheQuestion(t *testing.T) {
 	tb := press(newTaskboard(), down, down, down)
-	stale := board.ConfirmTakeOver{ID: 902, Assignee: 44, Name: "Carla de la Mar"}
+	stale := board.ConfirmAssignToMe{ID: 902, Assignee: 44, Name: "Carla de la Mar"}
 
-	_, eff, err := tb.TakeOver(nothingSent, stale)
+	_, eff, err := tb.AssignToMe(nothingSent, stale)
 
-	if err != nil || eff != (board.ConfirmTakeOver{ID: 902, Assignee: 43, Name: "bkoch"}) {
+	if err != nil || eff != (board.ConfirmAssignToMe{ID: 902, Assignee: 43, Name: "bkoch"}) {
 		t.Errorf("got %#v, %v", eff, err)
 	}
 }
 
-func TestTaskboardTakeOverOfUserStoryKeepsOthersAndNeverAsks(t *testing.T) {
+func TestTaskboardAssignToMeOfUserStoryKeepsOthersAndNeverAsks(t *testing.T) {
 	tb := press(newTaskboard(), down, down) // US#12, Bea
 
-	tb, save := takeOverTaskboard(t, tb, board.ConfirmTakeOver{})
+	tb, save := assignToMeTaskboard(t, tb, board.ConfirmAssignToMe{})
 
 	if save.Kind != board.UserStoryItem || save.ID != 501 || !reflect.DeepEqual(save.Assignees, []int64{me, 43}) || save.Assignee != me {
 		t.Errorf("save %+v", save)
@@ -148,7 +148,7 @@ func TestTaskboardTakeOverOfUserStoryKeepsOthersAndNeverAsks(t *testing.T) {
 	}
 }
 
-func TestTaskboardTakeOverRejectionsAndNoOps(t *testing.T) {
+func TestTaskboardAssignToMeRejectionsAndNoOps(t *testing.T) {
 	noPerm := scrum
 	noPerm.Permissions.ModifyTask = false
 	tests := []struct {
@@ -162,23 +162,23 @@ func TestTaskboardTakeOverRejectionsAndNoOps(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			_, eff, err := tt.tb.TakeOver(nothingSent, board.ConfirmTakeOver{})
+			_, eff, err := tt.tb.AssignToMe(nothingSent, board.ConfirmAssignToMe{})
 			if err == nil || err.Error() != tt.want || eff != nil {
 				t.Errorf("got %#v, %v, want %q", eff, err, tt.want)
 			}
 		})
 	}
-	_, eff, err := press(newTaskboard(), down, down, down, down, down, down).TakeOver(nothingSent, board.ConfirmTakeOver{}) // group without User Story
+	_, eff, err := press(newTaskboard(), down, down, down, down, down, down).AssignToMe(nothingSent, board.ConfirmAssignToMe{}) // group without User Story
 	if eff != nil || err != nil {
 		t.Errorf("group without User Story: %#v, %v", eff, err)
 	}
 }
 
-func TestTaskboardTakeOverIsLockedWhileSavingAndDoesNotReloadTheUserStory(t *testing.T) {
+func TestTaskboardAssignToMeIsLockedWhileSavingAndDoesNotReloadTheUserStory(t *testing.T) {
 	tb := press(newTaskboard(), down, down, down, down, down, down, down, down)
-	tb, save := takeOverTaskboard(t, tb, board.ConfirmTakeOver{})
+	tb, save := assignToMeTaskboard(t, tb, board.ConfirmAssignToMe{})
 
-	if _, _, err := tb.TakeOver(nothingSent, board.ConfirmTakeOver{}); !errors.Is(err, board.ErrStillSaving) {
+	if _, _, err := tb.AssignToMe(nothingSent, board.ConfirmAssignToMe{}); !errors.Is(err, board.ErrStillSaving) {
 		t.Errorf("got %v", err)
 	}
 	if _, _, err := tb.ChangeStatus(board.Next, nothingSent); !errors.Is(err, board.ErrStillSaving) {
@@ -190,9 +190,9 @@ func TestTaskboardTakeOverIsLockedWhileSavingAndDoesNotReloadTheUserStory(t *tes
 	}
 }
 
-func TestTaskboardTakeOverUndoneOnFailure(t *testing.T) {
+func TestTaskboardAssignToMeUndoneOnFailure(t *testing.T) {
 	tb := press(newTaskboard(), down, down, down, down, down, down, down, down)
-	tb, save := takeOverTaskboard(t, tb, board.ConfirmTakeOver{})
+	tb, save := assignToMeTaskboard(t, tb, board.ConfirmAssignToMe{})
 
 	tb, eff, ok := tb.NotSaved(save, board.SaveFailed)
 

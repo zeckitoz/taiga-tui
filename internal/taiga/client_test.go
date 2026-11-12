@@ -643,7 +643,7 @@ func TestPatchUserStorySendsOnlyStatusAndVersion(t *testing.T) {
 	}
 }
 
-func TestPatchTaskTakeOverSendsOnlyAssigneeAndVersion(t *testing.T) {
+func TestPatchTaskAssignToMeSendsOnlyAssigneeAndVersion(t *testing.T) {
 	srv := newPatchServer(t, "/api/v1/tasks/9891", "task.json")
 
 	_, err := taiga.NewClient(srv.URL, staticToken("t")).PatchTask(t.Context(), 9891, 3, domain.TaskPatch{Assignee: 42})
@@ -653,7 +653,7 @@ func TestPatchTaskTakeOverSendsOnlyAssigneeAndVersion(t *testing.T) {
 	}
 }
 
-func TestPatchUserStoryTakeOverSendsMainAssigneeAndAllAssignees(t *testing.T) {
+func TestPatchUserStoryAssignToMeSendsMainAssigneeAndAllAssignees(t *testing.T) {
 	srv := newPatchServer(t, "/api/v1/userstories/10213", "userstory.json")
 	patch := domain.UserStoryPatch{Assignee: 42, Assignees: []int64{42, 43}}
 

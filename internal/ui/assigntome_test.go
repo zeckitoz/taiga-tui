@@ -137,7 +137,7 @@ func TestAOnTheGroupWithoutUserStoryDoesNothing(t *testing.T) {
 	}
 }
 
-func TestFailedTakeOverIsUndoneLikeAStatusChange(t *testing.T) {
+func TestFailedAssignToMeIsUndoneLikeAStatusChange(t *testing.T) {
 	h := onKanban(t, 100, 24)
 	h.taiga.FailNext("PatchUserStory", taiga.ErrConflict)
 
@@ -148,7 +148,7 @@ func TestFailedTakeOverIsUndoneLikeAStatusChange(t *testing.T) {
 	}
 }
 
-func TestTakeOverIsRejectedWithoutPermissionAndWhileSaving(t *testing.T) {
+func TestAssignToMeIsRejectedWithoutPermissionAndWhileSaving(t *testing.T) {
 	k := onKanban(t, 100, 24)
 	save := k.sendOnly(keyMsg("shift+right"))
 	k.key("a")
@@ -169,7 +169,7 @@ func TestTakeOverIsRejectedWithoutPermissionAndWhileSaving(t *testing.T) {
 	}
 }
 
-func TestFootersAndFullHelpAnnounceTakeOver(t *testing.T) {
+func TestFootersAndFullHelpAnnounceAssignToMe(t *testing.T) {
 	for _, h := range []*harness{onKanban(t, 100, 24), onTaskboard(t, 120, 30)} {
 		if !strings.Contains(h.plainView(), "a assign to me") {
 			t.Errorf("no \"a assign to me\" in the footer:\n%s", h.plainView())
@@ -186,5 +186,5 @@ func TestAssignToMeQuestion(t *testing.T) {
 	h.key("j")
 	h.key("j")
 	h.key("a")
-	h.golden("taskboard_takeover_question")
+	h.golden("taskboard_assign_to_me_question")
 }

@@ -210,7 +210,7 @@ func TestPatchTaskChangesStatusAndBumpsVersionLikeTaiga(t *testing.T) {
 	}
 }
 
-func TestPatchTakeOverChangesAssigneesAndKeepsStatusLikeTaiga(t *testing.T) {
+func TestPatchAssignToMeChangesAssigneesAndKeepsStatusLikeTaiga(t *testing.T) {
 	f := newFake()
 	f.SetTasks(7, domain.Task{ID: 20, Status: 1, Assignee: 43})
 

@@ -210,8 +210,8 @@ type App struct {
 	// paletteStatus tells that the palette lists the Statuses of the
 	// selected row instead of the places to go to.
 	paletteStatus bool
-	// asked is the question of a Take Over waiting for its answer.
-	asked *board.ConfirmTakeOver
+	// asked is the question of an Assign to me waiting for its answer.
+	asked *board.ConfirmAssignToMe
 	// pickedFor is the row the Status palette was opened for.
 	pickedFor board.StatusOptions
 	// helpOpen expands the footer of the board into the full help.
@@ -926,7 +926,7 @@ func (a App) updateBoard(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a, nil
 	}
 	if a.asked != nil {
-		return a.answerTakeOver(key)
+		return a.answerAssignToMe(key)
 	}
 	switch key.String() {
 	case "q":
@@ -936,7 +936,7 @@ func (a App) updateBoard(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case "s":
 		return a.openStatusPalette(), nil
 	case "a":
-		return a.takeOver(board.ConfirmTakeOver{})
+		return a.assignToMe(board.ConfirmAssignToMe{})
 	case "?":
 		a.helpOpen = !a.helpOpen
 		a.scrollBoard()

@@ -518,20 +518,20 @@ func (t Taskboard) PickStatus(id int64, sent Sent) (Taskboard, Effect, error) {
 	return t.change(toStatus(id), sent)
 }
 
-// TakeOver makes the Team Member the Assignee of the selected Task or User
+// AssignToMe makes the Team Member the Assignee of the selected Task or User
 // Story right away, keeping the other Assignees of a User Story, and
 // returns the effect of saving the change, which the App records in sent
 // once it sends it. If that replaces the Assignee of a Task, it returns the
-// effect ConfirmTakeOver instead, to be answered by calling it again with
+// effect ConfirmAssignToMe instead, to be answered by calling it again with
 // it as confirmed; confirmed is the zero value otherwise. It returns a
 // Rejection if the change cannot be made, and no effect if no item is
 // selected.
-func (t Taskboard) TakeOver(sent Sent, confirmed ConfirmTakeOver) (Taskboard, Effect, error) {
+func (t Taskboard) AssignToMe(sent Sent, confirmed ConfirmAssignToMe) (Taskboard, Effect, error) {
 	it, ok := t.selectedItem()
 	if !ok {
 		return t, nil, nil
 	}
-	sv, eff, err := t.saves.takeOver(t.project, t.me, sent, it, confirmed)
+	sv, eff, err := t.saves.assignToMe(t.project, t.me, sent, it, confirmed)
 	if err != nil {
 		return t, nil, err
 	}
