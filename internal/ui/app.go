@@ -935,7 +935,7 @@ func (a App) updateBoard(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a.openPalette()
 	case "s":
 		return a.openStatusPalette(), nil
-	case "t":
+	case "a":
 		return a.takeOver(board.ConfirmTakeOver{})
 	case "?":
 		a.helpOpen = !a.helpOpen

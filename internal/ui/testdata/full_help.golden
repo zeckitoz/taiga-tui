@@ -19,6 +19,6 @@
                                                                                                     |
  ⇧←/→ H/L  change to previous / next status    enter     show / hide detail                         |
  s         pick a status                       r         refresh                                    |
- t         take over: make me the assignee     : ctrl+k  menu: boards, sprints, projects            |
+ a         assign to me                        : ctrl+k  menu: boards, sprints, projects            |
  ←/→ h/l   previous / next tab                 ? esc     close help                                 |
  ↑/↓ j/k   move                                q ctrl+c  quit                                       |

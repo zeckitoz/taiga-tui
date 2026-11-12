@@ -19,10 +19,10 @@ func storedTask(t *testing.T, h *harness, id int64) domain.Task {
 	return task
 }
 
-func TestTOnTheKanbanBoardAddsMeToTheAssigneesOfAUserStory(t *testing.T) {
+func TestAOnTheKanbanBoardAddsMeToTheAssigneesOfAUserStory(t *testing.T) {
 	h := onKanban(t, 100, 24) // #15, nobody
 
-	h.key("t")
+	h.key("a")
 
 	if got := storedStory(t, h, 502); !slices.Equal(got.Assignees, []int64{42}) || got.Version != 1 {
 		t.Errorf("stored %+v", got)
@@ -32,23 +32,23 @@ func TestTOnTheKanbanBoardAddsMeToTheAssigneesOfAUserStory(t *testing.T) {
 	}
 }
 
-func TestTOnTheKanbanBoardKeepsTheOtherAssignees(t *testing.T) {
+func TestAOnTheKanbanBoardKeepsTheOtherAssignees(t *testing.T) {
 	h := onKanban(t, 100, 24)
 	h.key("j")
 	h.key("j") // #108, Carla
 
-	h.key("t")
+	h.key("a")
 
 	if got := storedStory(t, h, 503); !slices.Equal(got.Assignees, []int64{42, 44}) {
 		t.Errorf("stored %+v", got)
 	}
 }
 
-func TestTWhenAlreadyAssigneeSendsNothing(t *testing.T) {
+func TestAWhenAlreadyAssigneeSendsNothing(t *testing.T) {
 	h := onKanban(t, 100, 24)
 	h.key("j") // #12, Alice is an Assignee
 
-	h.key("t")
+	h.key("a")
 
 	if h.taiga.Calls("PatchUserStory") != 0 || !strings.Contains(h.plainView(), "Already assigned to you") {
 		t.Errorf("%d requests:\n%s", h.taiga.Calls("PatchUserStory"), h.plainView())
@@ -59,25 +59,25 @@ func TestTWhenAlreadyAssigneeSendsNothing(t *testing.T) {
 	}
 }
 
-func TestTOfAnUnassignedTaskTakesOverWithoutAsking(t *testing.T) {
+func TestAOfAnUnassignedTaskTakesOverWithoutAsking(t *testing.T) {
 	h := onTaskboard(t, 120, 30)
 	for range 9 {
 		h.key("j") // #40, nobody
 	}
 
-	h.key("t")
+	h.key("a")
 
 	if got := storedTask(t, h, 806); got.Assignee != 42 || got.Version != 1 {
 		t.Errorf("stored %+v", got)
 	}
 }
 
-func TestTOfATaskOfSomeoneElseAsksAndYReplaces(t *testing.T) {
+func TestAOfATaskOfSomeoneElseAsksAndYReplaces(t *testing.T) {
 	h := onTaskboard(t, 120, 30)
 	h.key("j")
 	h.key("j") // #32, Bea Koch
 
-	h.key("t")
+	h.key("a")
 
 	if !strings.Contains(h.plainView(), "Replace Bea Koch as assignee? y/n") || h.taiga.Calls("PatchTask") != 0 {
 		t.Fatalf("%d requests:\n%s", h.taiga.Calls("PatchTask"), h.plainView())
@@ -97,7 +97,7 @@ func TestAnyOtherKeyThanYKeepsTheAssigneeOfATask(t *testing.T) {
 			h := onTaskboard(t, 120, 30)
 			h.key("j")
 			h.key("j")
-			h.key("t")
+			h.key("a")
 
 			h.key(key)
 
@@ -111,26 +111,26 @@ func TestAnyOtherKeyThanYKeepsTheAssigneeOfATask(t *testing.T) {
 	}
 }
 
-func TestTOfAUserStoryOnTheTaskboardKeepsOthersAndNeverAsks(t *testing.T) {
+func TestAOfAUserStoryOnTheTaskboardKeepsOthersAndNeverAsks(t *testing.T) {
 	h := onTaskboard(t, 120, 30)
 	for range 7 {
 		h.key("j") // #15, nobody
 	}
 
-	h.key("t")
+	h.key("a")
 
 	if got := storedStory(t, h, 502); !slices.Equal(got.Assignees, []int64{42}) {
 		t.Errorf("stored %+v", got)
 	}
 }
 
-func TestTOnTheGroupWithoutUserStoryDoesNothing(t *testing.T) {
+func TestAOnTheGroupWithoutUserStoryDoesNothing(t *testing.T) {
 	h := onTaskboard(t, 120, 30)
 	for range 8 {
 		h.key("j")
 	}
 
-	h.key("t")
+	h.key("a")
 
 	if h.taiga.Calls("PatchTask")+h.taiga.Calls("PatchUserStory") != 0 || len(h.app.status) != 0 {
 		t.Errorf("status %+v", h.app.status)
@@ -141,7 +141,7 @@ func TestFailedTakeOverIsUndoneLikeAStatusChange(t *testing.T) {
 	h := onKanban(t, 100, 24)
 	h.taiga.FailNext("PatchUserStory", taiga.ErrConflict)
 
-	h.key("t")
+	h.key("a")
 
 	if !strings.Contains(h.plainView(), "#15 was changed by someone else") || strings.Contains(lineWith(h, "Product search"), "AE") {
 		t.Errorf("view:\n%s", h.plainView())
@@ -151,7 +151,7 @@ func TestFailedTakeOverIsUndoneLikeAStatusChange(t *testing.T) {
 func TestTakeOverIsRejectedWithoutPermissionAndWhileSaving(t *testing.T) {
 	k := onKanban(t, 100, 24)
 	save := k.sendOnly(keyMsg("shift+right"))
-	k.key("t")
+	k.key("a")
 	if !strings.Contains(k.plainView(), "Still saving…") {
 		t.Errorf("view:\n%s", k.plainView())
 	}
@@ -163,7 +163,7 @@ func TestTakeOverIsRejectedWithoutPermissionAndWhileSaving(t *testing.T) {
 	api.SetProject(p)
 	h := resumed(t, api, aliceState(webShop.ID))
 	h.start()
-	h.key("t")
+	h.key("a")
 	if !strings.Contains(h.plainView(), "You don't have permission to change user stories") || api.Calls("PatchUserStory") != 0 {
 		t.Errorf("view:\n%s", h.plainView())
 	}
@@ -171,20 +171,20 @@ func TestTakeOverIsRejectedWithoutPermissionAndWhileSaving(t *testing.T) {
 
 func TestFootersAndFullHelpAnnounceTakeOver(t *testing.T) {
 	for _, h := range []*harness{onKanban(t, 100, 24), onTaskboard(t, 120, 30)} {
-		if !strings.Contains(h.plainView(), "t take over") {
-			t.Errorf("no \"t take over\" in the footer:\n%s", h.plainView())
+		if !strings.Contains(h.plainView(), "a assign to me") {
+			t.Errorf("no \"a assign to me\" in the footer:\n%s", h.plainView())
 		}
 		h.key("?")
-		if !strings.Contains(h.plainView(), "take over") {
+		if !strings.Contains(h.plainView(), "assign to me") {
 			t.Errorf("full help:\n%s", h.plainView())
 		}
 	}
 }
 
-func TestTakeOverQuestion(t *testing.T) {
+func TestAssignToMeQuestion(t *testing.T) {
 	h := onTaskboard(t, 100, 24)
 	h.key("j")
 	h.key("j")
-	h.key("t")
+	h.key("a")
 	h.golden("taskboard_takeover_question")
 }
