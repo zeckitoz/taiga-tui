@@ -17,7 +17,7 @@
  No description                                                                                     |
                                                                                                     |
                                                                                                     |
- ⇧←/→ H/L  change to previous / next status    enter     show / hide detail                         |
+ ⇧←/→ H/L  change to previous / next status    ↵ enter   show / hide detail                         |
  s         pick a status                       r         refresh                                    |
  a         assign to me                        : ctrl+k  menu: boards, sprints, projects            |
  ←/→ h/l   previous / next tab                 ? esc     close help                                 |

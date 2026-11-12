@@ -221,3 +221,14 @@ func TestKanbanLoadFailureNamesTheBoard(t *testing.T) {
 		t.Errorf("view:\n%s", view)
 	}
 }
+
+func TestKanbanFooterAndHelpShowTheEnterGlyph(t *testing.T) {
+	h := onKanban(t, 120, 24)
+	if view := h.plainView(); !strings.Contains(view, "↵ detail") || strings.Contains(view, "enter detail") {
+		t.Errorf("footer:\n%s", view)
+	}
+	h.key("?")
+	if !strings.Contains(h.plainView(), "↵ enter") {
+		t.Errorf("full help:\n%s", h.plainView())
+	}
+}

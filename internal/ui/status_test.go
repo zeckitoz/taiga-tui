@@ -19,6 +19,14 @@ func lineWith(h *harness, s string) string {
 	return ""
 }
 
+// pickStatus changes the Status of the selected row with the status picker.
+func pickStatus(h *harness, name string) {
+	h.t.Helper()
+	h.key("s")
+	h.typeText(name)
+	h.key("enter")
+}
+
 // storedStory returns the User Story as the fake instance holds it.
 func storedStory(t *testing.T, h *harness, id int64) domain.UserStory {
 	t.Helper()
@@ -193,7 +201,7 @@ func TestTaskStatusChangeKeepsRowAndReloadsUserStory(t *testing.T) {
 	h.key("j") // #31 In progress
 	userStoryLoads := h.taiga.Calls("UserStory")
 
-	h.key("L")
+	pickStatus(h, "ready for test")
 
 	if selectedTaskboardRef(h) != 31 {
 		t.Errorf("cursor on #%d", selectedTaskboardRef(h))
@@ -212,7 +220,7 @@ func TestTaskStatusChangeKeepsRowAndReloadsUserStory(t *testing.T) {
 func TestUserStoryStatusChangeOnTaskboard(t *testing.T) {
 	h := onTaskboard(t, 120, 40) // #12 New
 
-	h.key("shift+right")
+	pickStatus(h, "ready")
 
 	if got := storedStory(t, h, 501); got.Status != 102 {
 		t.Errorf("stored %+v", got)
@@ -233,7 +241,7 @@ func TestTaskStatusChangeWithoutPermission(t *testing.T) {
 	h.start()
 	h.key("j")
 
-	h.key("L")
+	h.key("s")
 
 	if !strings.Contains(h.plainView(), "You don't have permission to change tasks") {
 		t.Errorf("view:\n%s", h.plainView())
@@ -272,7 +280,7 @@ func TestFootersAndHelpNameStatusChange(t *testing.T) {
 	}
 
 	tb := onTaskboard(t, 120, 40)
-	if !strings.Contains(tb.plainView(), "⇧←/→ status") {
+	if !strings.Contains(tb.plainView(), "s status") || strings.Contains(tb.plainView(), "⇧") {
 		t.Errorf("Taskboard footer:\n%s", tb.plainView())
 	}
 }
@@ -283,9 +291,13 @@ func TestSavingRowsGolden(t *testing.T) {
 	h.golden("kanban_saving")
 
 	tb := onTaskboard(t, 100, 14)
-	tb.sendOnly(keyMsg("shift+right")) // #12
+	tb.key("s") // #12
+	tb.typeText("ready")
+	tb.sendOnly(keyMsg("enter"))
 	tb.key("j")
-	tb.sendOnly(keyMsg("L")) // #31
+	tb.key("s")
+	tb.typeText("ready for test")
+	tb.sendOnly(keyMsg("enter")) // #31
 	tb.golden("taskboard_saving")
 }
 
@@ -312,13 +324,13 @@ func TestItemStaysLockedAcrossBoardSwitchUntilItsSaveIsAnswered(t *testing.T) {
 		t.Fatalf("selected #%d, want the User Story #15", got)
 	}
 
-	h.key("L")
+	h.key("s")
 
 	if !strings.Contains(h.plainView(), "Still saving…") {
 		t.Errorf("view:\n%s", h.plainView())
 	}
 	h.runCmd(save)
-	h.key("L")
+	pickStatus(h, "in progress")
 	if n := h.taiga.Calls("PatchUserStory"); n != 2 {
 		t.Errorf("%d requests, want the second one after the answer", n)
 	}

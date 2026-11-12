@@ -116,14 +116,22 @@ func TestStatusPickerRejectsWithoutPermissionAndWhileSaving(t *testing.T) {
 }
 
 func TestFootersAndFullHelpAnnounceThePicker(t *testing.T) {
-	for _, h := range []*harness{onKanban(t, 100, 24), onTaskboard(t, 120, 30)} {
-		if !strings.Contains(h.plainView(), "s pick") {
-			t.Errorf("no \"s pick\" in the footer:\n%s", h.plainView())
-		}
-		h.key("?")
-		if !strings.Contains(h.plainView(), "pick a status") {
-			t.Errorf("full help:\n%s", h.plainView())
-		}
+	for name, tt := range map[string]struct {
+		h    *harness
+		want string
+	}{
+		"kanban":    {onKanban(t, 100, 24), "s pick"},
+		"taskboard": {onTaskboard(t, 120, 30), "s status"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			if !strings.Contains(tt.h.plainView(), tt.want) {
+				t.Errorf("no %q in the footer:\n%s", tt.want, tt.h.plainView())
+			}
+			tt.h.key("?")
+			if !strings.Contains(tt.h.plainView(), "pick a status") {
+				t.Errorf("full help:\n%s", tt.h.plainView())
+			}
+		})
 	}
 }
 

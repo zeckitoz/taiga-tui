@@ -96,81 +96,115 @@ func TestTaskboardUserStoryDetailCountsTasksPerStatus(t *testing.T) {
 	h.golden("taskboard_user_story_detail")
 }
 
-func TestTaskboardNavigationCollapsesAndExpands(t *testing.T) {
+func TestEnterFoldsAndUnfoldsAUserStory(t *testing.T) {
 	h := onTaskboard(t, 120, 40)
 
-	h.key("down") // #31
-	h.key("left") // #12
-	if got := selectedTaskboardRef(h); got != 12 {
-		t.Fatalf("left on a Task selected #%d", got)
-	}
-	h.key("h") // collapse #12
-	if strings.Contains(h.plainView(), "Validate card number") {
-		t.Errorf("not collapsed:\n%s", h.plainView())
-	}
-	h.key("l") // expand
-	if !strings.Contains(h.plainView(), "Validate card number") {
-		t.Errorf("not expanded:\n%s", h.plainView())
-	}
-	h.key("enter") // collapse
+	h.key("enter")
 	if strings.Contains(h.plainView(), "Validate card number") {
 		t.Errorf("enter did not collapse:\n%s", h.plainView())
 	}
-	h.key("right")
-	h.key("k")
-	if got := selectedTaskboardRef(h); got != 12 {
-		t.Errorf("k at the top selected #%d", got)
+	h.key("enter")
+	if !strings.Contains(h.plainView(), "Validate card number") {
+		t.Errorf("enter did not expand:\n%s", h.plainView())
+	}
+}
+
+func TestArrowAndStatusKeysDoNothingOnTheTaskboard(t *testing.T) {
+	for _, key := range []string{"left", "right", "h", "l", "shift+left", "shift+right", "H", "L"} {
+		for _, onTask := range []bool{false, true} {
+			t.Run(fmt.Sprintf("%s task=%v", key, onTask), func(t *testing.T) {
+				h := onTaskboard(t, 120, 40) // #12 selected, expanded, detail view open
+				if onTask {
+					h.key("j")
+				}
+				ref, view, open := selectedTaskboardRef(h), h.plainView(), h.app.detailOpen
+
+				h.key(key)
+
+				if got := selectedTaskboardRef(h); got != ref || h.app.detailOpen != open || h.plainView() != view {
+					t.Errorf("%s changed the Taskboard, selected #%d, detail %v:\n%s", key, got, h.app.detailOpen, h.plainView())
+				}
+				if n := h.taiga.Calls("PatchUserStory") + h.taiga.Calls("PatchTask"); n != 0 {
+					t.Errorf("%s saved %d times", key, n)
+				}
+			})
+		}
 	}
 }
 
 func TestFoldingHidesTheDetailViewAndUnfoldingShowsIt(t *testing.T) {
-	for _, keys := range [][2]string{{"enter", "enter"}, {"h", "l"}, {"left", "right"}} {
-		t.Run(keys[0], func(t *testing.T) {
-			h := onTaskboard(t, 120, 40) // #12 selected, detail view open
+	h := onTaskboard(t, 120, 40) // #12 selected, detail view open
 
-			h.key(keys[0])
-			if h.app.detailOpen {
-				t.Errorf("detail view still open after folding:\n%s", h.plainView())
-			}
-			h.key(keys[1])
-			if !h.app.detailOpen {
-				t.Errorf("detail view not shown after unfolding:\n%s", h.plainView())
-			}
-		})
+	h.key("enter")
+	if h.app.detailOpen {
+		t.Errorf("detail view still open after folding:\n%s", h.plainView())
+	}
+	h.key("enter")
+	if !h.app.detailOpen {
+		t.Errorf("detail view not shown after unfolding:\n%s", h.plainView())
 	}
 }
 
 func TestFoldingAnotherUserStoryKeepsTheDetailViewHidden(t *testing.T) {
 	h := onTaskboard(t, 120, 40)
-	h.key("h") // fold #12, hides the detail view
-	h.key("j") // #21, expanded
+	h.key("enter") // fold #12, hides the detail view
+	h.key("j")     // #21, expanded
 
-	h.key("h")
+	h.key("enter")
 
 	if h.app.detailOpen {
 		t.Errorf("folding brought the detail view back:\n%s", h.plainView())
 	}
-	h.key("l")
+	h.key("enter")
 	if !h.app.detailOpen {
 		t.Error("unfolding did not show the detail view")
 	}
 }
 
-func TestUnchangedFoldStateLeavesTheDetailViewAlone(t *testing.T) {
+func TestMovingBetweenRowsLeavesTheHiddenDetailViewHidden(t *testing.T) {
 	h := onTaskboard(t, 120, 40)
 	h.key("j")
 	h.key("enter") // hide the detail view on a Task
 	h.key("k")     // #12, expanded
 
-	h.key("l") // already expanded
-
-	if h.app.detailOpen {
-		t.Error("l on an expanded User Story showed the detail view")
-	}
-	h.key("j")
-	h.key("left") // back to #12, no fold
 	if h.app.detailOpen {
 		t.Error("moving up to the User Story showed the detail view")
+	}
+}
+
+func TestTaskboardFooterOrder(t *testing.T) {
+	h := onTaskboard(t, 140, 40)
+	want := func(row string, keys ...string) {
+		t.Helper()
+		line := lineWith(h, keys[len(keys)-1])
+		prev := -1
+		for _, k := range keys {
+			i := strings.Index(line, k)
+			if i <= prev {
+				t.Errorf("%s row: %q not in order in %q", row, k, line)
+			}
+			prev = i
+		}
+		if strings.Contains(line, "enter") || strings.Contains(line, "⇧") || strings.Contains(line, "←/→") {
+			t.Errorf("%s row: removed key in %q", row, line)
+		}
+	}
+	want("User Story", "↑/↓ move", "↵ fold", "a assign to me", "s status", "r refresh", ": menu", "? help")
+	h.key("j")
+	want("Task", "↑/↓ move", "↵ detail", "a assign to me", "s status", "r refresh", ": menu", "? help")
+}
+
+func TestTaskboardFullHelpListsNoRemovedKey(t *testing.T) {
+	h := onTaskboard(t, 140, 40)
+	h.key("?")
+	view := h.plainView()
+	for _, gone := range []string{"⇧", "H/L", "h/l", "←/→"} {
+		if strings.Contains(view, gone) {
+			t.Errorf("full help lists %q:\n%s", gone, view)
+		}
+	}
+	if !strings.Contains(view, "↵ enter") {
+		t.Errorf("full help does not list \"↵ enter\":\n%s", view)
 	}
 }
 

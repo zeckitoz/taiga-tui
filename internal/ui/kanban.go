@@ -27,7 +27,7 @@ func kanbanKeys(k board.Kanban) []string {
 	if k.SelectedIndex() >= 0 {
 		keys = append(keys, "⇧←/→ status", "s pick", "a assign to me")
 	}
-	return append(keys, "←/→ tab", "↑/↓ move", "enter detail", "r refresh", ": menu", "? help")
+	return append(keys, "←/→ tab", "↑/↓ move", "↵ detail", "r refresh", ": menu", "? help")
 }
 
 // Placement of the detail view: right of the list from detailRightFrom
