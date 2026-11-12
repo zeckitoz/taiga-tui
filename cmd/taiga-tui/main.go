@@ -6,12 +6,14 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net/http"
 	"os"
+	"path/filepath"
 	"time"
 
-	tea "charm.land/bubbletea/v2"
-
 	"github.com/zeckitoz/taiga-tui/internal/config"
+	"github.com/zeckitoz/taiga-tui/internal/crash"
+	"github.com/zeckitoz/taiga-tui/internal/debuglog"
 	"github.com/zeckitoz/taiga-tui/internal/session"
 	"github.com/zeckitoz/taiga-tui/internal/taiga"
 	"github.com/zeckitoz/taiga-tui/internal/ui"
@@ -48,13 +50,26 @@ func run(args []string, getenv func(string) string, stdout, stderr io.Writer) in
 		return 0
 	}
 
+	var opts []taiga.Option
+	var debugLog string
+	if cfg.Debug {
+		f, path, err := openDebugLog(cfg.ConfigDir)
+		if err != nil {
+			fmt.Fprintf(stderr, "taiga-tui: %v\n", err)
+			return 1
+		}
+		defer f.Close() //nolint:errcheck // nothing sensible to do about a failed close
+		opts = append(opts, taiga.WithTransport(debuglog.NewTransport(http.DefaultTransport, f)))
+		debugLog = path
+	}
+
 	stateFile := config.NewStateFile(cfg.ConfigDir)
 	state, stateWarnings := stateFile.Load()
 	warnings = append(warnings, stateWarnings...)
 	host := cfg.Host()
 	sess := session.NewManager(session.Options{
 		Host:    host,
-		Auth:    taiga.NewAuthAPI(cfg.InstanceURL),
+		Auth:    taiga.NewAuthAPI(cfg.InstanceURL, opts...),
 		Keyring: session.WithTimeout(session.NewKeyringStore(), session.KeyringTimeout),
 		File:    session.NewFileStore(cfg.ConfigDir),
 		Now:     time.Now,
@@ -64,14 +79,20 @@ func run(args []string, getenv func(string) string, stdout, stderr io.Writer) in
 		return logout(sess, host, state, warnings, stdout, stderr)
 	}
 
-	err = runTUI(ui.Deps{
-		Host:         host,
-		Session:      sess,
-		Taiga:        taiga.NewClient(cfg.InstanceURL, sess),
-		State:        stateFile,
-		InitialState: state,
-		Warnings:     warnings,
+	err = crash.Capture(func() error {
+		return runTUI(ui.Deps{
+			Host:         host,
+			Session:      sess,
+			Taiga:        taiga.NewClient(cfg.InstanceURL, sess, opts...),
+			State:        stateFile,
+			InitialState: state,
+			Warnings:     warnings,
+			DebugLog:     debugLog,
+		})
 	})
+	if c, ok := errors.AsType[*crash.Error](err); ok {
+		return reportCrash(c, cfg.ConfigDir, stderr)
+	}
 	if err != nil {
 		fmt.Fprintf(stderr, "taiga-tui: %v\n", err)
 		return 1
@@ -79,10 +100,43 @@ func run(args []string, getenv func(string) string, stdout, stderr io.Writer) in
 	return 0
 }
 
+// reportCrash writes crash.log to dir and tells the Team Member where it is.
+// If the file cannot be written, the report goes to stderr instead.
+func reportCrash(c *crash.Error, dir string, stderr io.Writer) int {
+	path := filepath.Join(dir, crashLogName)
+	if err := crash.WriteLog(path, version.Current().String(), c); err != nil {
+		fmt.Fprintf(stderr, "taiga-tui crashed. Could not write %s: %v\n%v\n\n%s", path, err, c.Value, c.Stack)
+		return 1
+	}
+	fmt.Fprintf(stderr, "taiga-tui crashed. Details written to %s\n", path)
+	return 1
+}
+
+const crashLogName = "crash.log"
+
+// openDebugLog creates debug.log in dir, replacing the log of an earlier run,
+// and writes the version line as its header.
+func openDebugLog(dir string) (*os.File, string, error) {
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return nil, "", fmt.Errorf("debug log: %w", err)
+	}
+	path := filepath.Join(dir, debugLogName)
+	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o600)
+	if err != nil {
+		return nil, "", fmt.Errorf("debug log: %w", err)
+	}
+	if _, err := fmt.Fprintln(f, version.Current()); err != nil {
+		_ = f.Close()
+		return nil, "", fmt.Errorf("debug log: %w", err)
+	}
+	return f, path, nil
+}
+
+const debugLogName = "debug.log"
+
 // runTUI runs the terminal UI until the Team Member quits. Tests replace it.
 var runTUI = func(d ui.Deps) error {
-	_, err := tea.NewProgram(ui.New(d)).Run()
-	return err
+	return crash.Run(ui.New(d))
 }
 
 // logout deletes the stored tokens of the instance from the keyring and the
@@ -110,6 +164,8 @@ Flags:
   --instance URL     Taiga instance URL (env %s,
                      default %s)
   --config-dir DIR   Directory for all files of taiga-tui (env %s)
+  --debug            Write requests and responses, without tokens and
+                     password, to debug.log in the config directory
   --version          Print the version and exit
   -h, --help         Show this help and exit
 

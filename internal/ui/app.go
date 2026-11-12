@@ -5,6 +5,7 @@ package ui
 import (
 	"context"
 	"errors"
+	"fmt"
 	"slices"
 	"strings"
 	"time"
@@ -56,6 +57,9 @@ type Deps struct {
 	InitialState config.State
 	// Warnings are shown in the status line from the start.
 	Warnings []config.Warning
+	// DebugLog is the path of the debug log while --debug is on, else empty.
+	// The status line names it.
+	DebugLog string
 	// Tick replaces tea.Tick in tests.
 	Tick TickFunc
 	// Now tells the time, whose date in its location decides the Current
@@ -268,6 +272,9 @@ func New(d Deps) App {
 	for _, w := range d.Warnings {
 		a.status = append(a.status, statusMsg{text: string(w)})
 	}
+	if d.DebugLog != "" {
+		a.status = append(a.status, statusMsg{text: "Debug log: " + d.DebugLog})
+	}
 	return a
 }
 
@@ -338,8 +345,15 @@ func (a App) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		a.scrollBoard()
 		return a, nil
 	case tea.KeyPressMsg:
-		if msg.String() == "ctrl+c" {
+		switch {
+		case msg.String() == "ctrl+c", msg.String() == "q" && a.tooSmall():
 			return a, tea.Quit
+		case a.tooSmall():
+			return a, nil
+		}
+	case tea.PasteMsg, tea.MouseMsg:
+		if a.tooSmall() {
+			return a, nil
 		}
 	case keyringSlowMsg:
 		if a.screen != screenStarting {
@@ -1433,6 +1447,11 @@ func (a App) View() tea.View {
 	if a.width == 0 {
 		return tea.View{AltScreen: true}
 	}
+	if a.tooSmall() {
+		v := tea.NewView(a.tooSmallView())
+		v.AltScreen = true
+		return v
+	}
 	var content string
 	switch a.screen {
 	case screenPicker:
@@ -1459,6 +1478,26 @@ func (a App) View() tea.View {
 	v := tea.NewView(content)
 	v.AltScreen = true
 	return v
+}
+
+// Smallest terminal the layouts are made for.
+const (
+	minWidth  = 60
+	minHeight = 15
+)
+
+// tooSmall reports whether the terminal is smaller than minWidth×minHeight.
+// The size is unknown until the first WindowSizeMsg.
+func (a App) tooSmall() bool {
+	return a.width > 0 && (a.width < minWidth || a.height < minHeight)
+}
+
+// tooSmallView is the only thing shown in a terminal that is too small. All
+// state stays as it is and shows again once the window grows.
+func (a App) tooSmallView() string {
+	text := fmt.Sprintf("Terminal too small (need %d×%d, have %d×%d)", minWidth, minHeight, a.width, a.height)
+	lines := strings.Split(lipgloss.Wrap(text, a.width, " "), "\n")
+	return centered(a.width, a.height, lines[:min(len(lines), a.height)]...)
 }
 
 // plain renders the screens without header and footer, centered.

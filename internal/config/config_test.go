@@ -392,3 +392,16 @@ func TestResolveRejectsArgumentsAfterLogout(t *testing.T) {
 		t.Fatalf("expected a UsageError, got %v", err)
 	}
 }
+
+func TestResolveDebugFlag(t *testing.T) {
+	env := envMap{"TAIGA_TUI_CONFIG_DIR": t.TempDir()}
+
+	off, _, err := config.Resolve(nil, env.Get)
+	if err != nil || off.Debug {
+		t.Fatalf("without the flag: debug %v, err %v", off.Debug, err)
+	}
+	on, _, err := config.Resolve([]string{"--debug"}, env.Get)
+	if err != nil || !on.Debug {
+		t.Fatalf("with the flag: debug %v, err %v", on.Debug, err)
+	}
+}
