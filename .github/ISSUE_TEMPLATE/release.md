@@ -19,7 +19,7 @@ Always work through the full checklist, also for a patch release.
 - [ ] The Release workflow is green and the pre-release has all artefacts and `checksums.txt`
 - [ ] The tap and the bucket were **not** updated (tags with `-` are pre-releases)
 - [ ] `gh attestation verify` passes for an artefact and for `checksums.txt`
-- [ ] Live smoke test against the real Taiga instance
+- [ ] Live smoke test against the real Taiga instance: `go test -tags live ./internal/taiga -run TestLiveSmoke -v` (see `docs/test-project.md`), and it leaves the test project as it was
 
 ## Manual run with the RC artefacts in real terminals
 

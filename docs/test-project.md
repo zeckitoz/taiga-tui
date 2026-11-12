@@ -47,6 +47,23 @@ TAIGA_TUI_LIVE_PROJECT=<project-slug> go test ./internal/taiga -run TestRecordFi
 `TAIGA_TUI_LIVE_URL` overrides the instance.
 Pseudonyms are numbered by Team Member ID and projects by project ID, so a new recording keeps them stable and the diff shows only real data changes.
 
+## Live smoke test
+
+Before every release a maintainer runs the smoke test against the real instance.
+It uses the same environment variables as the recording, with the test project of this document, and CI never runs it because it needs the build tag `live`:
+
+```zsh
+TAIGA_TUI_LIVE_PROJECT=<project-slug> go test -tags live ./internal/taiga -run TestLiveSmoke -v
+```
+
+Without the variables it is skipped.
+It checks login, token refresh, all ten methods of the `Taiga` interface, a Status Change and Assign to me on a User Story and on a Task, each there and back, and that a patch with an outdated `version` returns the conflict error.
+A cleanup puts the User Story and the Task back as they were, also after a failed check.
+
+Besides the cases above, it needs a User Story and a Task of the current Sprint that have an Assignee other than you and a second open Status to move to.
+Taiga's API cannot empty the Assignees, which is why the test puts back an existing Assignee instead of starting from none.
+User Story A and its closed Task fit when you are not their Assignee.
+
 ## Reviewing a recording
 
 1. Run `go test ./...`.
