@@ -118,7 +118,8 @@ func TestTaskboardRowsCarryProgressStatusAndAssignee(t *testing.T) {
 	story := rows[2] // #12
 	wantStory := board.TaskboardRow{
 		Kind: board.RowUserStory, ID: 501, Ref: 12, Title: "Checkout", Expanded: true,
-		Tasks: domain.TaskProgress{Done: 1, Total: 2},
+		Status: scrum.UserStoryStatuses[1],
+		Tasks:  domain.TaskProgress{Done: 1, Total: 2},
 	}
 	if !reflect.DeepEqual(story, wantStory) {
 		t.Errorf("User Story row\ngot  %+v\nwant %+v", story, wantStory)
@@ -137,8 +138,31 @@ func TestTaskboardRowsCarryProgressStatusAndAssignee(t *testing.T) {
 	if orphan.Status.ID != 0 || len(orphan.Assignees) != 1 || orphan.Assignees[0].Name != "Unknown member" || orphan.Mine {
 		t.Errorf("orphan row %+v", orphan)
 	}
-	if none := rows[7]; none.Tasks != (domain.TaskProgress{Total: 2}) {
+	if none := rows[7]; none.Tasks != (domain.TaskProgress{Total: 2}) || none.Status.ID != 0 {
 		t.Errorf("group without User Story %+v", none)
+	}
+}
+
+func TestTaskboardUserStoryRowsCarryTheirStatus(t *testing.T) {
+	var got []string
+	for _, r := range newTaskboard().Rows() {
+		if r.Kind == board.RowUserStory {
+			got = append(got, r.Status.Name)
+		}
+	}
+
+	if want := []string{"Done", "In progress", "New", ""}; !slices.Equal(got, want) {
+		t.Errorf("got %q, want %q", got, want)
+	}
+}
+
+func TestTaskboardUserStoryRowWithUnknownStatusHasZeroStatus(t *testing.T) {
+	c := domain.SprintContent{UserStories: []domain.UserStory{{ID: 501, Ref: 12, Title: "Checkout", Status: 99}}}
+
+	row := board.NewTaskboard(scrum, sprint, c, me).Rows()[0]
+
+	if row.Status.ID != 0 {
+		t.Errorf("status %+v", row.Status)
 	}
 }
 

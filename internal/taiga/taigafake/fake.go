@@ -44,14 +44,26 @@ func (f *Fake) AddProject(p domain.Project, stories ...domain.UserStory) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.projects = append(f.projects, p)
-	f.stories[p.ID] = stories
+	f.stories[p.ID] = slices.Clone(stories) // patches never change the caller's slice
+}
+
+// SetProject replaces the project with the ID of p, e.g. to change its
+// permissions, keeping its User Stories, Sprints and Tasks.
+func (f *Fake) SetProject(p domain.Project) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	for i, old := range f.projects {
+		if old.ID == p.ID {
+			f.projects[i] = p
+		}
+	}
 }
 
 // SetStories replaces the User Stories of the project with the given ID.
 func (f *Fake) SetStories(projectID int64, stories ...domain.UserStory) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	f.stories[projectID] = stories
+	f.stories[projectID] = slices.Clone(stories)
 }
 
 // SetSprints replaces the Sprints of the project with the given ID, newest
@@ -59,14 +71,14 @@ func (f *Fake) SetStories(projectID int64, stories ...domain.UserStory) {
 func (f *Fake) SetSprints(projectID int64, sprints ...domain.Sprint) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	f.sprints[projectID] = sprints
+	f.sprints[projectID] = slices.Clone(sprints)
 }
 
 // SetTasks replaces the Tasks of the project with the given ID.
 func (f *Fake) SetTasks(projectID int64, tasks ...domain.Task) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	f.tasks[projectID] = tasks
+	f.tasks[projectID] = slices.Clone(tasks)
 }
 
 // FailNext makes the next call of method (e.g. "Kanban") return err. Several
@@ -261,4 +273,54 @@ func archived(p domain.Project, status int64) bool {
 		}
 	}
 	return false
+}
+
+// PatchUserStory implements the Taiga interface. Like Taiga, it rejects an
+// outdated version with taiga.ErrConflict and bumps the version on success.
+func (f *Fake) PatchUserStory(ctx context.Context, id int64, version int, p domain.UserStoryPatch) (domain.UserStory, error) {
+	if err := f.enter(ctx, "PatchUserStory"); err != nil {
+		return domain.UserStory{}, err
+	}
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	for _, stories := range f.stories {
+		for i, s := range stories {
+			if s.ID != id {
+				continue
+			}
+			if s.Version != version {
+				return domain.UserStory{}, taiga.ErrConflict
+			}
+			s.Status = p.Status
+			s.Version++
+			stories[i] = s
+			return s, nil
+		}
+	}
+	return domain.UserStory{}, taiga.ErrNotFound
+}
+
+// PatchTask implements the Taiga interface. Like Taiga, it rejects an
+// outdated version with taiga.ErrConflict and bumps the version on success.
+func (f *Fake) PatchTask(ctx context.Context, id int64, version int, p domain.TaskPatch) (domain.Task, error) {
+	if err := f.enter(ctx, "PatchTask"); err != nil {
+		return domain.Task{}, err
+	}
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	for _, tasks := range f.tasks {
+		for i, t := range tasks {
+			if t.ID != id {
+				continue
+			}
+			if t.Version != version {
+				return domain.Task{}, taiga.ErrConflict
+			}
+			t.Status = p.Status
+			t.Version++
+			tasks[i] = t
+			return t, nil
+		}
+	}
+	return domain.Task{}, taiga.ErrNotFound
 }

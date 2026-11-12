@@ -37,6 +37,8 @@ type Taiga interface {
 	Sprints(ctx context.Context, projectID int64) ([]domain.Sprint, error)
 	Taskboard(ctx context.Context, projectID, sprintID int64) (domain.SprintContent, error)
 	Task(ctx context.Context, id int64) (domain.Task, error)
+	PatchTask(ctx context.Context, id int64, version int, p domain.TaskPatch) (domain.Task, error)
+	PatchUserStory(ctx context.Context, id int64, version int, p domain.UserStoryPatch) (domain.UserStory, error)
 }
 
 // StateStore persists state.json.
@@ -134,6 +136,20 @@ type (
 		task domain.Task
 		err  error
 	}
+	// statusSavedMsg is the result of a save on the board on: the Task or
+	// User Story as Taiga saved it, or the error.
+	statusSavedMsg struct {
+		on    config.Board
+		save  board.SaveStatus
+		task  domain.Task
+		story domain.UserStory
+		err   error
+	}
+	userStoryReloadedMsg struct {
+		load  board.ReloadUserStory
+		story domain.UserStory
+		err   error
+	}
 )
 
 // statusMsg is one entry of the status line.
@@ -148,11 +164,13 @@ type statusMsg struct {
 
 // App is the root model.
 type App struct {
-	deps          Deps
-	state         config.State
-	screen        screen
-	form          loginForm
-	spinner       spinner
+	deps    Deps
+	state   config.State
+	screen  screen
+	form    loginForm
+	spinner spinner
+	// saving turns on the rows whose Status Change is being saved.
+	saving        spinner
 	keyringIsSlow bool
 	status        []statusMsg
 	width, height int
@@ -184,6 +202,8 @@ type App struct {
 	// detailOpen shows the detail view, which is open by default. It is UI
 	// state only and never persisted.
 	detailOpen bool
+	// sent tracks the saves waiting for their results on every board.
+	sent board.Sent
 	// paletteOpen shows the command palette over the board.
 	paletteOpen bool
 	palette     palette
@@ -199,7 +219,13 @@ func New(d Deps) App {
 	if d.Now == nil {
 		d.Now = time.Now
 	}
-	a := App{deps: d, state: d.InitialState, spinner: spinner{tick: d.Tick}, detailOpen: true}
+	a := App{
+		deps:       d,
+		state:      d.InitialState,
+		spinner:    spinner{id: loadingSpinner, tick: d.Tick},
+		saving:     spinner{id: savingSpinner, tick: d.Tick},
+		detailOpen: true,
+	}
 	a.me = domain.TeamMember{ID: a.state.UserID, Username: a.state.Username, FullName: a.state.FullName}
 	for _, w := range d.Warnings {
 		a.status = append(a.status, statusMsg{text: string(w)})
@@ -218,7 +244,30 @@ func (a App) Init() tea.Cmd {
 
 // Update implements tea.Model.
 func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	m, cmd := a.update(msg)
+	next := m.(App)
+	saving := next.syncSaving()
+	return next, tea.Batch(cmd, saving)
+}
+
+// syncSaving runs the spinner of the saving rows while a board saves.
+func (a *App) syncSaving() tea.Cmd {
+	tb, _ := a.sprints.Taskboard()
+	switch busy := a.kanban.Saving() || tb.Saving(); {
+	case busy && !a.saving.active:
+		return a.saving.start()
+	case !busy:
+		a.saving.stop()
+	}
+	return nil
+}
+
+func (a App) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
+	case spinnerTickMsg:
+		if msg.id == savingSpinner {
+			return a, a.saving.update(msg)
+		}
 	case tea.WindowSizeMsg:
 		a.width, a.height = msg.Width, msg.Height
 		a.form.setWidth(msg.Width)
@@ -306,6 +355,16 @@ func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return tb.TaskFailed(msg.load, msg.err)
 			}
 			return tb.TaskLoaded(msg.load, msg.task)
+		}), nil
+	case statusSavedMsg:
+		return a.statusSaved(msg)
+	case userStoryReloadedMsg:
+		if msg.err != nil {
+			return a, nil // the next refresh corrects the User Story
+		}
+		// The board drops results for other Sprints.
+		return a.withTaskboard(func(tb board.Taskboard) board.Taskboard {
+			return tb.UserStoryReloaded(msg.load, msg.story)
 		}), nil
 	}
 
@@ -553,6 +612,8 @@ func (a App) openBoard(b config.Board) (App, tea.Cmd) {
 	a.sprintPickerBack = ""
 	if a.screen == screenBoard && a.board != b {
 		a.sprintPickerBack = a.board
+		// Results of saves on the board left no longer count.
+		a = boardOps(a.board).dropSaves(a)
 	}
 	a.board = b
 	if a.state.LastBoard != b {
@@ -881,6 +942,10 @@ func (a App) updateKanban(key tea.KeyPressMsg) (App, tea.Cmd) {
 		if a.kanban.Loaded() {
 			return a.loadKanban()
 		}
+	case "shift+left", "H":
+		return a.changeStatus(board.Previous)
+	case "shift+right", "L":
+		return a.changeStatus(board.Next)
 	case "left", "h":
 		a.kanban = a.kanban.PrevTab()
 	case "right", "l":
@@ -914,6 +979,10 @@ func (a App) updateTaskboard(key tea.KeyPressMsg) (App, tea.Cmd) {
 		tb = tb.CursorUp()
 	case "down", "j":
 		tb = tb.CursorDown()
+	case "shift+left", "H":
+		return a.changeStatus(board.Previous)
+	case "shift+right", "L":
+		return a.changeStatus(board.Next)
 	case "left", "h":
 		tb = tb.Left()
 	case "right", "l":
@@ -1175,7 +1244,7 @@ func (a App) taskboardPath() string {
 func (a App) boardBody() string { return a.shownBoard().body(a, a.bodyHeight()) }
 
 func (a App) kanbanBody(h int) string {
-	return renderKanban(a.kanban, a.kanbanTop, a.width, h, a.detailOpen)
+	return renderKanban(a.kanban, a.kanbanTop, a.width, h, a.detailOpen, a.saving.glyph())
 }
 
 func (a App) taskboardBody(h int) string {
@@ -1185,12 +1254,12 @@ func (a App) taskboardBody(h int) string {
 			faintStyle.Render("No sprints in "+a.project.Name), "",
 			faintStyle.Render(noSprintsKeys))
 	}
-	return renderTaskboard(tb, a.taskboardTop, a.width, h, a.detailOpen)
+	return renderTaskboard(tb, a.taskboardTop, a.width, h, a.detailOpen, a.saving.glyph())
 }
 
 func (a App) boardKeys() []string { return a.shownBoard().keys(a) }
 
-func (a App) kanbanFooter() []string { return kanbanKeys }
+func (a App) kanbanFooter() []string { return kanbanKeys(a.kanban) }
 
 func (a App) taskboardFooter() []string {
 	if tb, ok := a.sprints.Taskboard(); ok {

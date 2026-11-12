@@ -26,14 +26,18 @@ const noUserStory = "Tasks without user story"
 
 // taskboardKeys returns the footer of the Taskboard for the selected row.
 func taskboardKeys(tb board.Taskboard) []string {
-	keys := []string{"↑/↓ move", "←/→ fold", "enter fold", "r refresh", ": menu", "? help"}
-	switch {
-	case tb.Empty():
-		keys = []string{"r refresh", ": menu", "? help"}
-	case tb.TaskSelected():
-		keys[2] = "enter detail"
+	if tb.Empty() {
+		return []string{"r refresh", ": menu", "? help"}
 	}
-	return keys
+	var keys []string
+	if tb.StatusSelected() {
+		keys = append(keys, "⇧←/→ status")
+	}
+	enter := "enter fold"
+	if tb.TaskSelected() {
+		enter = "enter detail"
+	}
+	return append(keys, "↑/↓ move", "←/→ fold", enter, "r refresh", ": menu", "? help")
 }
 
 // noSprintsKeys is the hint of a project without Sprints.
@@ -130,46 +134,72 @@ func taskboardLines(rows []board.TaskboardRow) ([]int, int) {
 }
 
 // renderTaskboard renders the Taskboard into a w×h area, showing the list
-// from line top and, if detail is set, the detail view.
-func renderTaskboard(tb board.Taskboard, top, w, h int, detail bool) string {
+// from line top and, if detail is set, the detail view. spin is the frame of
+// the spinner on rows that are saving.
+func renderTaskboard(tb board.Taskboard, top, w, h int, detail bool, spin string) string {
 	if tb.Empty() {
 		return centered(w, h,
 			faintStyle.Render("No user stories in "+plainText(tb.Sprint().Name)), "",
 			faintStyle.Render(": switch sprint · r refresh"))
 	}
 	l := layoutBoard(w, h, detail)
-	list := taskList(tb.Rows(), top, l.listW, l.listH)
+	list := taskList(tb.Rows(), top, l.listW, l.listH, spin)
 	return withDetail(l, w, list, func(inner int, compact bool) []string {
 		d, _ := tb.Detail()
 		return taskboardDetail(d, inner, compact)
 	})
 }
 
-// taskColumns are the widths of the columns of the Task rows.
+// taskColumns are the widths of the columns of the rows. User Story rows
+// share the Status column with the Task rows and show their progress in the
+// last column, which is as wide as the Assignees or the progress need.
 type taskColumns struct {
 	ref, title, status, who int
 	fullNames               bool
+	// storyTitle is the width of the title of User Story rows, and
+	// barless tells that their progress drops the bar to keep the titles.
+	storyTitle int
+	barless    bool
 }
 
 func columnsFor(rows []board.TaskboardRow, w int) taskColumns {
 	c := taskColumns{fullNames: w >= fullNamesFrom}
+	storyW, barW, countW := 0, 0, 0
 	for _, r := range rows {
-		if r.Kind != board.RowTask {
-			continue
+		switch r.Kind {
+		case board.RowTask:
+			c.ref = max(c.ref, len(ref(r.Ref)))
+			c.status = max(c.status, ansi.StringWidth(ansi.Strip(statusLabel(r.Status))))
+			c.who = max(c.who, ansi.StringWidth(taskAssignee(r.Assignees, c.fullNames, false)))
+		case board.RowUserStory:
+			if r.ID != 0 {
+				c.status = max(c.status, ansi.StringWidth(ansi.Strip(statusLabel(r.Status))))
+			}
+			storyW = max(storyW, ansi.StringWidth(storyTitle(r)))
+			if p := storyProgress(r, false, false); p != "" {
+				barW = max(barW, ansi.StringWidth(ansi.Strip(p)))
+				countW = max(countW, ansi.StringWidth(ansi.Strip(storyProgress(r, true, false))))
+			}
 		}
-		c.ref = max(c.ref, len(ref(r.Ref)))
-		c.status = max(c.status, ansi.StringWidth(ansi.Strip(statusLabel(r.Status))))
-		c.who = max(c.who, ansi.StringWidth(taskAssignee(r.Assignees, c.fullNames, false)))
 	}
 	c.status = min(c.status, maxStatusWidth)
 	c.who = min(c.who, maxNameWidth)
+	// The bar goes first when a User Story title would not fit with it.
+	c.barless = w-6-c.status-max(c.who, barW) < storyW
+	if c.barless {
+		c.who = max(c.who, countW)
+	} else {
+		c.who = max(c.who, barW)
+	}
 	// indent and marker, ref, title and the two right columns
 	c.title = w - 4 - c.ref - 1 - 2 - c.status - 2 - c.who - 1
+	c.storyTitle = w - 1 - 2 - c.status - 2 - c.who - 1
 	return c
 }
 
-// taskList renders the rows as w×h lines from line top.
-func taskList(rows []board.TaskboardRow, top, w, h int) string {
+// taskList renders the rows as w×h lines from line top, with spin in front
+// of rows that are saving.
+func taskList(rows []board.TaskboardRow, top, w, h int, spin string) string {
 	cols := columnsFor(rows, w)
 	lineOf, n := taskboardLines(rows)
 	all := make([]string, n)
@@ -177,9 +207,9 @@ func taskList(rows []board.TaskboardRow, top, w, h int) string {
 		var line string
 		switch r.Kind {
 		case board.RowUserStory:
-			line = userStoryRow(r, w)
+			line = userStoryRow(r, cols, w, spin)
 		case board.RowTask:
-			line = taskRow(r, cols, w)
+			line = taskRow(r, cols, w, spin)
 		case board.RowNoTasks:
 			line = "    " + faintStyle.Render("No tasks")
 		}
@@ -195,35 +225,62 @@ func taskList(rows []board.TaskboardRow, top, w, h int) string {
 	return strings.Join(lines, "\n")
 }
 
-// userStoryRow renders the heading of a group: the collapse arrow, ref and
-// title in bold accent color and the task progress on the right.
-func userStoryRow(r board.TaskboardRow, w int) string {
+// storyTitle is the collapse arrow, ref and title of a User Story row, or
+// the name of the group of Tasks without User Story.
+func storyTitle(r board.TaskboardRow) string {
 	arrow := "▾"
 	if !r.Expanded {
 		arrow = "▸"
 	}
-	title := arrow + " " + noUserStory
+	if r.ID == 0 {
+		return arrow + " " + noUserStory
+	}
+	return arrow + " " + ref(r.Ref) + " " + plainText(r.Title)
+}
+
+// storyProgress renders the Task progress of a User Story row: the bar and
+// the count, or just the count if barless. It is empty for an expanded User
+// Story without Tasks, which says so in the row below.
+func storyProgress(r board.TaskboardRow, barless, styled bool) string {
+	if r.Tasks.Total == 0 && r.Expanded {
+		return ""
+	}
+	if barless && r.Tasks.Total > 0 {
+		count := fmt.Sprintf("%d/%d", r.Tasks.Done, r.Tasks.Total)
+		if styled {
+			return faintStyle.Render(count)
+		}
+		return count
+	}
+	return progress(r.Tasks, styled)
+}
+
+// userStoryRow renders the heading of a group: the collapse arrow, ref and
+// title in bold accent color, the Status label in the Status column of the
+// Tasks and the Task progress on the right.
+func userStoryRow(r board.TaskboardRow, c taskColumns, w int, spin string) string {
+	prog := storyProgress(r, c.barless, !r.Selected)
+	status := ""
 	if r.ID != 0 {
-		title = arrow + " " + ref(r.Ref) + " " + plainText(r.Title)
+		status = statusLabel(r.Status)
 	}
-	// An expanded User Story without Tasks says so in the row below.
-	prog := ""
-	if r.Tasks.Total > 0 || !r.Expanded {
-		prog = progress(r.Tasks, !r.Selected)
-	}
-	pw := ansi.StringWidth(prog)
+	progW := ansi.StringWidth(ansi.Strip(prog))
+	right := fit(status, c.status) + "  " + strings.Repeat(" ", max(0, c.who-progW)) + prog + " "
+	marker := savingMarker(r.Saving, spin)
 	if r.Selected {
-		return cursorStyle.Bold(true).Render(fit(" "+fit(title, w-pw-4)+"  "+prog+" ", w))
+		return cursorStyle.Bold(true).Render(fit(ansi.Strip(marker)+fit(storyTitle(r), c.storyTitle)+"  "+ansi.Strip(right), w))
 	}
-	return " " + titleStyle.Render(fit(title, w-pw-4)) + "  " + prog + " "
+	return marker + titleStyle.Render(fit(storyTitle(r), c.storyTitle)) + "  " + right
 }
 
 // taskRow renders a Task: marker, ref, title, Status label and Assignee.
 // Under the cursor the row loses its colors and is shown reversed.
-func taskRow(r board.TaskboardRow, c taskColumns, w int) string {
-	marker := "    "
+func taskRow(r board.TaskboardRow, c taskColumns, w int, spin string) string {
+	marker := " " + savingMarker(r.Saving, spin)
 	if r.Mine {
-		marker = "  " + mineStyle.Render("▍") + " "
+		marker += mineStyle.Render("▍") + " "
+	} else {
+		marker += "  "
 	}
 	line := marker + faintStyle.Render(fit(ref(r.Ref), c.ref)) + " " + fit(plainText(r.Title), c.title) + "  " +
 		fit(statusLabel(r.Status), c.status) + "  " + fit(taskAssignee(r.Assignees, c.fullNames, true), c.who) + " "

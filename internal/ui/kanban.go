@@ -21,8 +21,14 @@ const (
 	maxProgressBar   = 10
 )
 
-// kanbanKeys is the footer of the Kanban Board.
-var kanbanKeys = []string{"←/→ status", "↑/↓ move", "enter detail", "r refresh", ": menu", "? help"}
+// kanbanKeys returns the footer of the Kanban Board for the selected row.
+func kanbanKeys(k board.Kanban) []string {
+	var keys []string
+	if k.SelectedIndex() >= 0 {
+		keys = append(keys, "⇧←/→ status")
+	}
+	return append(keys, "←/→ tab", "↑/↓ move", "enter detail", "r refresh", ": menu", "? help")
+}
 
 // Placement of the detail view: right of the list from detailRightFrom
 // columns, otherwise below it, never over it.
@@ -63,8 +69,9 @@ func layoutBoard(w, h int, detail bool) boardLayout {
 }
 
 // renderKanban renders the Kanban Board into a w×h area, showing the list
-// from line top and, if detail is set, the detail view.
-func renderKanban(k board.Kanban, top, w, h int, detail bool) string {
+// from line top and, if detail is set, the detail view. spin is the frame of
+// the spinner on rows that are saving.
+func renderKanban(k board.Kanban, top, w, h int, detail bool, spin string) string {
 	tabs := k.Tabs()
 	head := []string{tabBar(tabs, w), rule(w)}
 	if k.Empty() {
@@ -76,7 +83,7 @@ func renderKanban(k board.Kanban, top, w, h int, detail bool) string {
 	if rows := k.Rows(); len(rows) == 0 {
 		list = centered(l.listW, l.listH, faintStyle.Render("No user stories in "+plainText(k.ActiveStatus().Name)))
 	} else {
-		list = storyList(rows, top, l.listW, l.listH)
+		list = storyList(rows, top, l.listW, l.listH, spin)
 	}
 	return strings.Join(append(head, withDetail(l, w, list, func(inner int, compact bool) []string {
 		return kanbanDetailLines(k, inner, compact)
@@ -130,8 +137,9 @@ func tabLabel(t board.Tab, short bool) string {
 	return tabStyle(t.Color, t.Active).Render(label)
 }
 
-// storyList renders the rows of the active tab as aligned columns.
-func storyList(rows []board.Row, top, w, h int) string {
+// storyList renders the rows of the active tab as aligned columns, with
+// spin in front of rows that are saving.
+func storyList(rows []board.Row, top, w, h int, spin string) string {
 	refW, whoW, progW := 0, 0, 0
 	for _, r := range rows {
 		refW = max(refW, len(ref(r.Ref)))
@@ -145,9 +153,11 @@ func storyList(rows []board.Row, top, w, h int) string {
 	lines := make([]string, 0, h)
 	for i := top; i < len(rows) && len(lines) < h; i++ {
 		r := rows[i]
-		marker := "   "
+		marker := savingMarker(r.Saving, spin)
 		if r.Mine {
-			marker = " " + mineStyle.Render("▍") + " "
+			marker += mineStyle.Render("▍") + " "
+		} else {
+			marker += "  "
 		}
 		styled := !r.Selected
 		line := marker + fit(ref(r.Ref), refW) + " " + fit(plainText(r.Title), titleW) + "  " +
@@ -164,6 +174,14 @@ func storyList(rows []board.Row, top, w, h int) string {
 }
 
 func ref(n int) string { return "#" + strconv.Itoa(n) }
+
+// savingMarker is the cell in front of a row: spin while it is saving.
+func savingMarker(saving bool, spin string) string {
+	if saving {
+		return promptStyle.Render(spin)
+	}
+	return " "
+}
 
 // initials lists the Assignees' initials, the logged-in Team Member's in the
 // accent color when styled.

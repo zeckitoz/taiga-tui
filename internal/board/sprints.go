@@ -82,6 +82,10 @@ func (s Sprints) Knows(id int64) bool {
 // Open returns the effect of loading the Taskboard of sprint. The Taskboard
 // shown so far stays until the new one has loaded.
 func (s Sprints) Open(sprint domain.Sprint) (Sprints, LoadTaskboard) {
+	if s.hasTaskboard && s.taskboard.Sprint().ID != sprint.ID {
+		// Results of saves no longer count once another Sprint is chosen.
+		s.taskboard = s.taskboard.DropSaves()
+	}
 	s.taskboardGen++
 	return s, LoadTaskboard{
 		ProjectID:  s.project.ID,

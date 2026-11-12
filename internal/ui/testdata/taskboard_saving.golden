@@ -1,0 +1,14 @@
+ Web Shop › Taskboard › Sprint 4  03.11. - 16.11.2026  current                        Alice Example |
+⣾▾ #12 Checkout with credit card                                  ● Ready                    ▰▱ 1/2 |
+ ⣾▍ #31 Validate card number                                      ● Ready for test  Alice Example   |
+    #32 Redirect to 3-D Secure and back                           ● Closed          Bea Koch        |
+────────────────────────────────────────────────────────────────────────────────────────────────────|
+ #31 Validate card number                                                                           |
+ Status     ● Ready for test                                                                        |
+ Assignee   Alice Example (you)                                                                     |
+ User Story #12 Checkout with credit card                                                           |
+                                                                                                    |
+ Run the Luhn check before the form is sent.                                                        |
+                                                                                                    |
+ Show the error next to the field.                                                                  |
+ ⇧←/→ status · ↑/↓ move · ←/→ fold · enter detail · r refresh · : menu · ? help                     |

@@ -1,12 +1,14 @@
 package taiga
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
 	"net/url"
+	"slices"
 	"strconv"
 	"time"
 
@@ -136,6 +138,8 @@ type projectDTO struct {
 	USStatuses   []statusDTO `json:"us_statuses"`
 	TaskStatuses []statusDTO `json:"task_statuses"`
 	Members      []memberDTO `json:"members"`
+	// MyPermissions are those of the logged-in Team Member.
+	MyPermissions []string `json:"my_permissions"`
 }
 
 // Project returns the project with the given slug, including its User Story
@@ -154,6 +158,10 @@ func (c *Client) Project(ctx context.Context, slug string) (domain.Project, erro
 	}
 	for _, m := range d.Members {
 		p.Members = append(p.Members, m.domain())
+	}
+	p.Permissions = domain.Permissions{
+		ModifyTask:      slices.Contains(d.MyPermissions, "modify_task"),
+		ModifyUserStory: slices.Contains(d.MyPermissions, "modify_us"),
 	}
 	return p, nil
 }
@@ -359,13 +367,38 @@ func (c *Client) Task(ctx context.Context, id int64) (domain.Task, error) {
 	return d.domain(), nil
 }
 
+// statusPatchDTO changes the Status of a Task or User Story. Taiga rejects
+// it with a conflict if version is not the current one.
+type statusPatchDTO struct {
+	Status  int64 `json:"status"`
+	Version int   `json:"version"`
+}
+
+// PatchTask changes the Task with the given ID, which the Team Member last
+// saw in version, and returns it as Taiga saved it.
+func (c *Client) PatchTask(ctx context.Context, id int64, version int, p domain.TaskPatch) (domain.Task, error) {
+	var d taskDTO
+	body := statusPatchDTO{Status: p.Status, Version: version}
+	if err := c.patch(ctx, "/tasks/"+strconv.FormatInt(id, 10), body, &d); err != nil {
+		return domain.Task{}, err
+	}
+	return d.domain(), nil
+}
+
+// PatchUserStory changes the User Story with the given ID, which the Team
+// Member last saw in version, and returns it as Taiga saved it.
+func (c *Client) PatchUserStory(ctx context.Context, id int64, version int, p domain.UserStoryPatch) (domain.UserStory, error) {
+	var d userStoryDTO
+	body := statusPatchDTO{Status: p.Status, Version: version}
+	if err := c.patch(ctx, "/userstories/"+strconv.FormatInt(id, 10), body, &d); err != nil {
+		return domain.UserStory{}, err
+	}
+	return d.domain(), nil
+}
+
 // get sends an authenticated GET to the API path and decodes the JSON
 // response into dst. Pagination is always disabled; it only affects lists.
 func (c *Client) get(ctx context.Context, path string, query url.Values, dst any) error {
-	token, err := c.tokens.Token(ctx)
-	if err != nil {
-		return err
-	}
 	u := c.baseURL + "/api/v1" + path
 	if len(query) > 0 {
 		u += "?" + query.Encode()
@@ -374,9 +407,33 @@ func (c *Client) get(ctx context.Context, path string, query url.Values, dst any
 	if err != nil {
 		return err
 	}
+	req.Header.Set("x-disable-pagination", "1")
+	return c.do(req, dst)
+}
+
+// patch sends body as JSON in an authenticated PATCH to the API path and
+// decodes the JSON response into dst.
+func (c *Client) patch(ctx context.Context, path string, body, dst any) error {
+	data, err := json.Marshal(body)
+	if err != nil {
+		return err
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPatch, c.baseURL+"/api/v1"+path, bytes.NewReader(data))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	return c.do(req, dst)
+}
+
+// do sends req with the access token and decodes the JSON response into dst.
+func (c *Client) do(req *http.Request, dst any) error {
+	token, err := c.tokens.Token(req.Context())
+	if err != nil {
+		return err
+	}
 	req.Header.Set("Authorization", "Bearer "+token)
 	req.Header.Set("Accept", "application/json")
-	req.Header.Set("x-disable-pagination", "1")
 
 	resp, err := c.http.Do(req)
 	if err != nil {
