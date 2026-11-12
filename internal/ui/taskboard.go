@@ -31,7 +31,7 @@ func taskboardKeys(tb board.Taskboard) []string {
 	}
 	var keys []string
 	if tb.StatusSelected() {
-		keys = append(keys, "⇧←/→ status")
+		keys = append(keys, "⇧←/→ status", "s pick")
 	}
 	enter := "enter fold"
 	if tb.TaskSelected() {

@@ -3,6 +3,7 @@ package ui
 import (
 	"context"
 	"errors"
+	"slices"
 	"strconv"
 
 	tea "charm.land/bubbletea/v2"
@@ -16,7 +17,20 @@ import (
 // changeStatus moves the selected row of the board shown to the Status
 // next to its own in direction d, or tells why it cannot.
 func (a App) changeStatus(d board.Direction) (App, tea.Cmd) {
-	a, eff, err := a.shownBoard().changeStatus(a, d)
+	return a.applyStatusChange(func(a App) (App, board.Effect, error) { return a.shownBoard().changeStatus(a, d) })
+}
+
+// pickStatus changes the selected row of the board shown to the Status
+// with the given ID, or tells why it cannot.
+func (a App) pickStatus(id int64) (App, tea.Cmd) {
+	return a.applyStatusChange(func(a App) (App, board.Effect, error) { return a.shownBoard().pickStatus(a, id) })
+}
+
+// applyStatusChange makes a Status Change on the board shown through
+// change. It is the one path of both the keys for the next or previous
+// Status and the picker.
+func (a App) applyStatusChange(change func(App) (App, board.Effect, error)) (App, tea.Cmd) {
+	a, eff, err := change(a)
 	if err != nil {
 		a.status = append(a.status, statusMsg{text: err.Error(), hint: true})
 	}
@@ -131,6 +145,69 @@ func (a App) changeKanbanStatus(d board.Direction) (App, board.Effect, error) {
 	var err error
 	a.kanban, eff, err = a.kanban.ChangeStatus(d, a.sent)
 	return a, eff, err
+}
+
+// statusOptionsKanban returns the Statuses the selected User Story of the
+// Kanban Board can be changed to.
+func (a App) statusOptionsKanban() (board.StatusOptions, error) {
+	return a.kanban.StatusOptions(a.sent)
+}
+
+// statusOptionsTaskboard returns the Statuses the selected row of the
+// Taskboard can be changed to.
+func (a App) statusOptionsTaskboard() (board.StatusOptions, error) {
+	tb, ok := a.sprints.Taskboard()
+	if !ok {
+		return board.StatusOptions{}, nil
+	}
+	return tb.StatusOptions(a.sent)
+}
+
+// pickKanbanStatus moves the selected User Story of the Kanban Board to
+// the Status with the given ID.
+func (a App) pickKanbanStatus(id int64) (App, board.Effect, error) {
+	var eff board.Effect
+	var err error
+	a.kanban, eff, err = a.kanban.PickStatus(id, a.sent)
+	return a, eff, err
+}
+
+// pickTaskboardStatus moves the selected row of the Taskboard to the
+// Status with the given ID.
+func (a App) pickTaskboardStatus(id int64) (App, board.Effect, error) {
+	tb, ok := a.sprints.Taskboard()
+	if !ok {
+		return a, nil, nil
+	}
+	tb, eff, err := tb.PickStatus(id, a.sent)
+	a.sprints = a.sprints.WithTaskboard(tb)
+	return a, eff, err
+}
+
+// openStatusPalette opens the palette in Status mode for the selected row
+// of the board shown, or tells why it cannot be changed. It does nothing
+// if the row has no Status.
+func (a App) openStatusPalette() App {
+	opts, err := a.shownBoard().statusOptions(a)
+	if err != nil {
+		a.status = append(a.status, statusMsg{text: err.Error(), hint: true})
+		a.scrollBoard()
+		return a
+	}
+	if len(opts.Statuses) == 0 {
+		return a
+	}
+	entries := make([]paletteEntry, len(opts.Statuses))
+	for i, s := range opts.Statuses {
+		entries[i] = paletteEntry{kind: entryStatus, id: s.ID, label: "Status: " + plainText(s.Name), search: plainText(s.Name), current: s.ID == opts.Current}
+	}
+	a.paletteOpen, a.paletteStatus, a.pickedFor = true, true, opts
+	a.helpOpen = false // the palette has its own footer
+	a.palette = newPalette(entries, "Pick a status")
+	a.palette.selected = slices.IndexFunc(entries, func(e paletteEntry) bool { return e.current })
+	a.palette.setWidth(a.width)
+	a.palette.scroll(a.paletteListHeight())
+	return a
 }
 
 // changeTaskboardStatus changes the Status of the selected row of the
