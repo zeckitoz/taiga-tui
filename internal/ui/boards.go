@@ -23,12 +23,10 @@ type boardView struct {
 	loadDetail func(App) (App, tea.Cmd)
 	// reload reloads the board while it stays visible.
 	reload func(App) (App, tea.Cmd)
-	// changeStatus changes the Status of the selected row, savedResult
-	// feeds the result of its save back, and dropSaves forgets the saves
-	// when the Team Member leaves the board.
-	changeStatus func(App, board.Direction) (App, board.Effect, error)
-	savedResult  func(App, savedMsg) (App, board.Effect, bool)
-	dropSaves    func(App) App
+	// savedResult feeds the result of a save back, and dropSaves forgets
+	// the saves when the Team Member leaves the board.
+	savedResult func(App, savedMsg) (App, board.Effect, bool)
+	dropSaves   func(App) App
 	// statusOptions lists the Statuses the selected row can be changed to,
 	// pickStatus moves it to one of them.
 	statusOptions func(App) (board.StatusOptions, error)
@@ -57,7 +55,6 @@ func boardOps(b config.Board) boardView {
 			update:        App.updateTaskboard,
 			loadDetail:    App.loadTaskDetail,
 			reload:        App.reloadTaskboard,
-			changeStatus:  App.changeTaskboardStatus,
 			statusOptions: App.statusOptionsTaskboard,
 			pickStatus:    App.pickTaskboardStatus,
 			assignToMe:    App.assignToMeTaskboard,
@@ -80,7 +77,6 @@ func boardOps(b config.Board) boardView {
 		update:        App.updateKanban,
 		loadDetail:    App.loadUserStoryDetail,
 		reload:        App.loadKanban,
-		changeStatus:  App.changeKanbanStatus,
 		statusOptions: App.statusOptionsKanban,
 		pickStatus:    App.pickKanbanStatus,
 		assignToMe:    App.assignToMeKanban,

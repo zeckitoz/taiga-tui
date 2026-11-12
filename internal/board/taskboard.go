@@ -481,19 +481,22 @@ func (t Taskboard) StatusSelected() bool {
 	return ok
 }
 
-// ChangeStatus moves the selected Task or User Story to the Status of its
-// kind next to its own in direction d right away, keeping the row in place,
-// and returns the effect of saving the change, which the App records in
-// sent once it sends it. It returns a Rejection instead if the change
-// cannot be made, and neither if no item is selected.
-func (t Taskboard) ChangeStatus(d Direction, sent Sent) (Taskboard, Effect, error) {
-	return t.change(toNeighbour(d), sent)
-}
-
-// PickStatus is like ChangeStatus, but moves the selected row to the
-// Status of its kind with the given ID, which may be any one.
+// PickStatus moves the selected Task or User Story to the Status of its
+// kind with the given ID right away, keeping the row in place, and returns
+// the effect of saving the change, which the App records in sent once it
+// sends it. It returns a Rejection instead if the change cannot be made,
+// and neither if no item is selected.
 func (t Taskboard) PickStatus(id int64, sent Sent) (Taskboard, Effect, error) {
-	return t.change(toStatus(id), sent)
+	it, ok := t.selectedItem()
+	if !ok {
+		return t, nil, nil
+	}
+	sv, save, err := t.saves.changeStatus(t.project, sent, it, id)
+	if err != nil {
+		return t, nil, err
+	}
+	t.saves = sv
+	return t.regrouped(), save, nil
 }
 
 // AssignToMe makes the Team Member the Assignee of the selected Task or User
@@ -529,21 +532,6 @@ func (t Taskboard) StatusOptions(sent Sent) (StatusOptions, error) {
 		return StatusOptions{}, nil
 	}
 	return t.saves.options(t.project, sent, it)
-}
-
-// change starts the Status Change of the selected row to the Status that
-// to picks.
-func (t Taskboard) change(to target, sent Sent) (Taskboard, Effect, error) {
-	it, ok := t.selectedItem()
-	if !ok {
-		return t, nil, nil
-	}
-	sv, save, err := t.saves.changeStatus(t.project, sent, it, to)
-	if err != nil {
-		return t, nil, err
-	}
-	t.saves = sv
-	return t.regrouped(), save, nil
 }
 
 // TaskSaved takes the Task as Taiga saved it from the result of save and,

@@ -150,7 +150,7 @@ func TestFailedAssignToMeIsUndoneLikeAStatusChange(t *testing.T) {
 
 func TestAssignToMeIsRejectedWithoutPermissionAndWhileSaving(t *testing.T) {
 	k := onKanban(t, 100, 24)
-	save := k.sendOnly(keyMsg("shift+right"))
+	save := k.pickStatusOnly("ready")
 	k.key("a")
 	if !strings.Contains(k.plainView(), "Still saving…") {
 		t.Errorf("view:\n%s", k.plainView())

@@ -232,3 +232,35 @@ func TestKanbanFooterAndHelpShowTheEnterGlyph(t *testing.T) {
 		t.Errorf("full help:\n%s", h.plainView())
 	}
 }
+
+func TestKanbanFooterOrder(t *testing.T) {
+	h := onKanban(t, 140, 24)
+	keys := []string{"←/→ tab", "↑/↓ move", "↵ detail", "a assign to me", "s status", "r refresh", ": menu", "? help"}
+
+	line := lineWith(h, "? help")
+	prev := -1
+	for _, k := range keys {
+		i := strings.Index(line, k)
+		if i <= prev {
+			t.Errorf("%q not in order in %q", k, line)
+		}
+		prev = i
+	}
+	if strings.Contains(line, "⇧") || strings.Contains(line, "s pick") {
+		t.Errorf("removed key in %q", line)
+	}
+}
+
+func TestKanbanFullHelpListsNoStatusKeys(t *testing.T) {
+	h := onKanban(t, 140, 24)
+	h.key("?")
+	view := h.plainView()
+	for _, gone := range []string{"⇧", "H/L", "previous / next status"} {
+		if strings.Contains(view, gone) {
+			t.Errorf("full help lists %q:\n%s", gone, view)
+		}
+	}
+	if !strings.Contains(view, "pick a status") {
+		t.Errorf("full help does not list the picker:\n%s", view)
+	}
+}

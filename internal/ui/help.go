@@ -19,12 +19,11 @@ var commonHelp = []keyHelp{
 
 // kanbanHelp are the keys of the Kanban Board.
 var kanbanHelp = []keyHelp{
-	{"⇧←/→ H/L", "change to previous / next status"},
-	{"s", "pick a status"},
-	{"a", "assign to me"},
 	{"←/→ h/l", "previous / next tab"},
 	{"↑/↓ j/k", "move"},
 	{"↵ enter", "show / hide detail"},
+	{"a", "assign to me"},
+	{"s", "pick a status"},
 }
 
 // taskboardHelp are the keys of the Taskboard.
