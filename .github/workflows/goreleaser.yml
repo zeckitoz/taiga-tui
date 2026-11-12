@@ -1,0 +1,40 @@
+name: GoReleaser
+
+# Checks the release setup on pull requests that change it, so that a broken
+# config does not surface at the first tag.
+on:
+  pull_request:
+    paths:
+      - .goreleaser.yaml
+      - .github/workflows/release.yml
+      - .github/workflows/goreleaser.yml
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    name: GoReleaser check and snapshot
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - name: Check config
+        uses: goreleaser/goreleaser-action@v7
+        with:
+          distribution: goreleaser
+          version: v2.20.2
+          args: check
+      - name: Snapshot release
+        uses: goreleaser/goreleaser-action@v7
+        with:
+          distribution: goreleaser
+          version: v2.20.2
+          args: release --snapshot --clean
+        env:
+          # The snapshot publishes nothing; the config only needs the variable.
+          TAP_GITHUB_TOKEN: unused

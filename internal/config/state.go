@@ -8,6 +8,7 @@ import (
 	"maps"
 	"os"
 	"path/filepath"
+	"time"
 
 	"github.com/zeckitoz/taiga-tui/internal/atomicfile"
 	"github.com/zeckitoz/taiga-tui/internal/domain"
@@ -34,6 +35,11 @@ type State struct {
 	// Sprints remembers the Sprint chosen last by project ID. Use WithSprint
 	// and WithoutSprint to change it, since copies of a State share the map.
 	Sprints map[int64]int64 `json:"sprints,omitempty"`
+	// UpdateCheckedAt is the time of the last update check, zero if none ran.
+	UpdateCheckedAt time.Time `json:"update_checked_at,omitzero"`
+	// UpdateVersion is the release version the last successful update check
+	// found.
+	UpdateVersion string `json:"update_version,omitempty"`
 }
 
 // Board names one of a project's boards.
@@ -65,10 +71,11 @@ func (s State) WithoutSprint(projectID int64) State {
 }
 
 // LoggedIn returns the state after a successful login of m with the given
-// login input. The state of a different Team Member is discarded.
+// login input. The state of a different Team Member is discarded, except for
+// the update check, which belongs to the installation.
 func (s State) LoggedIn(m domain.TeamMember, login string) State {
 	if s.UserID != m.ID {
-		s = State{}
+		s = State{UpdateCheckedAt: s.UpdateCheckedAt, UpdateVersion: s.UpdateVersion}
 	}
 	s.UserID = m.ID
 	s.Username = m.Username

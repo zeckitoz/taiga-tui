@@ -391,3 +391,35 @@ func TestCrashLogThatCannotBeWrittenStillReportsThePanic(t *testing.T) {
 		t.Errorf("exit %d, stderr %q", res.code, res.stderr)
 	}
 }
+
+func TestUpdateCheckIsWiredUnlessConfigTurnsItOff(t *testing.T) {
+	tests := []struct {
+		name   string
+		config string
+		want   bool
+	}{
+		{"default", "", true},
+		{"on", "check_updates = true\n", true},
+		{"off", "check_updates = false\n", false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			dir := t.TempDir()
+			writeFile(t, dir, "config.toml", tt.config)
+			var got ui.Deps
+			stubTUI(t, func(d ui.Deps) error { got = d; return nil })
+
+			res := runWith(t, map[string]string{"TAIGA_TUI_CONFIG_DIR": dir})
+
+			if res.code != 0 {
+				t.Fatalf("exit %d, stderr %q", res.code, res.stderr)
+			}
+			if (got.CheckUpdate != nil) != tt.want {
+				t.Errorf("CheckUpdate set = %v, want %v", got.CheckUpdate != nil, tt.want)
+			}
+			if got.Version != version.Current().Version {
+				t.Errorf("Version = %q, want %q", got.Version, version.Current().Version)
+			}
+		})
+	}
+}
