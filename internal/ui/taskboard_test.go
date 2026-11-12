@@ -584,7 +584,7 @@ func onTaskboardWith(t *testing.T, api *taigafake.Fake) *harness {
 	st := aliceState(webShop.ID)
 	st.LastBoard = config.BoardTaskboard
 	hs := resumed(t, api, st)
-	hs.send(tea.WindowSizeMsg{Width: w, Height: h})
+	hs.send(tea.WindowSizeMsg{Width: 100, Height: 24})
 	hs.runCmd(hs.app.Init())
 	if hs.app.screen != screenBoard {
 		t.Fatalf("not on the board, screen %v:\n%s", hs.app.screen, hs.plainView())
