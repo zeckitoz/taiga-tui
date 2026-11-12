@@ -154,6 +154,13 @@ func smokeUserStory(t *testing.T, c api, project domain.Project, me domain.TeamM
 	if err != nil || moved.Status != other {
 		t.Fatalf("Status Change: %+v, %v", moved, err)
 	}
+	// A provoked conflict. Taiga rejects an outdated version only if the edits
+	// since then changed a field the patch sends, so orig.Version conflicts
+	// with a Status patch while the Status is moved.
+	_, err = c.PatchUserStory(ctx, id, orig.Version, domain.UserStoryPatch{Status: orig.Status})
+	if !errors.Is(err, taiga.ErrConflict) {
+		t.Errorf("patching the Status with an outdated version: got %v, want ErrConflict", err)
+	}
 	back, err := c.PatchUserStory(ctx, id, moved.Version, domain.UserStoryPatch{Status: orig.Status})
 	if err != nil || back.Status != orig.Status {
 		t.Fatalf("Status Change back: %+v, %v", back, err)
@@ -168,12 +175,6 @@ func smokeUserStory(t *testing.T, c api, project domain.Project, me domain.TeamM
 	given, err := c.PatchUserStory(ctx, id, taken.Version, domain.UserStoryPatch{Assignee: orig.Assignees[0], Assignees: orig.Assignees})
 	if err != nil || given.AssignedTo(me.ID) {
 		t.Fatalf("Assign to me back: %+v, %v", given, err)
-	}
-
-	// A provoked conflict: back.Version is outdated by now.
-	_, err = c.PatchUserStory(ctx, id, back.Version, domain.UserStoryPatch{Status: other})
-	if !errors.Is(err, taiga.ErrConflict) {
-		t.Errorf("patching with an outdated version: got %v, want ErrConflict", err)
 	}
 }
 
@@ -202,6 +203,11 @@ func smokeTask(t *testing.T, c api, project domain.Project, me domain.TeamMember
 	if err != nil || moved.Status != other {
 		t.Fatalf("Status Change: %+v, %v", moved, err)
 	}
+	// A provoked conflict, see smokeUserStory.
+	_, err = c.PatchTask(ctx, id, orig.Version, domain.TaskPatch{Status: orig.Status})
+	if !errors.Is(err, taiga.ErrConflict) {
+		t.Errorf("patching the Status with an outdated version: got %v, want ErrConflict", err)
+	}
 	back, err := c.PatchTask(ctx, id, moved.Version, domain.TaskPatch{Status: orig.Status})
 	if err != nil || back.Status != orig.Status {
 		t.Fatalf("Status Change back: %+v, %v", back, err)
@@ -214,11 +220,6 @@ func smokeTask(t *testing.T, c api, project domain.Project, me domain.TeamMember
 	given, err := c.PatchTask(ctx, id, taken.Version, domain.TaskPatch{Assignee: orig.Assignee})
 	if err != nil || given.Assignee != orig.Assignee {
 		t.Fatalf("Assign to me back: %+v, %v", given, err)
-	}
-
-	_, err = c.PatchTask(ctx, id, back.Version, domain.TaskPatch{Status: other})
-	if !errors.Is(err, taiga.ErrConflict) {
-		t.Errorf("patching with an outdated version: got %v, want ErrConflict", err)
 	}
 }
 

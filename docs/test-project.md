@@ -57,7 +57,7 @@ TAIGA_TUI_LIVE_PROJECT=<project-slug> go test -tags live ./internal/taiga -run T
 ```
 
 Without the variables it is skipped.
-It checks login, token refresh, all ten methods of the `Taiga` interface, a Status Change and Assign to me on a User Story and on a Task, each there and back, and that a patch with an outdated `version` returns the conflict error.
+It checks login, token refresh, all ten methods of the `Taiga` interface, a Status Change and Assign to me on a User Story and on a Task, each there and back, and that a Status patch with an outdated `version` returns the conflict error, which Taiga only does when the edits since then changed the Status.
 A cleanup puts the User Story and the Task back as they were, also after a failed check.
 
 Besides the cases above, it needs a User Story and a Task of the current Sprint that have an Assignee other than you and a second open Status to move to.
