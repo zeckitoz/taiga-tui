@@ -5,6 +5,8 @@ import (
 	"strings"
 	"testing"
 
+	tea "charm.land/bubbletea/v2"
+
 	"github.com/zeckitoz/taiga-tui/internal/domain"
 	"github.com/zeckitoz/taiga-tui/internal/taiga"
 )
@@ -27,6 +29,15 @@ func pickStatus(h *harness, name string) {
 	h.key("enter")
 }
 
+// pickStatusOnly is pickStatus, but returns the command that saves the
+// change instead of running it.
+func (h *harness) pickStatusOnly(name string) tea.Cmd {
+	h.t.Helper()
+	h.key("s")
+	h.typeText(name)
+	return h.sendOnly(keyMsg("enter"))
+}
+
 // storedStory returns the User Story as the fake instance holds it.
 func storedStory(t *testing.T, h *harness, id int64) domain.UserStory {
 	t.Helper()
@@ -37,55 +48,50 @@ func storedStory(t *testing.T, h *harness, id int64) domain.UserStory {
 	return s
 }
 
-func TestShiftArrowsChangeStatusOfUserStoryAndCursorFollows(t *testing.T) {
-	for _, keys := range [][2]string{{"shift+right", "shift+left"}, {"L", "H"}} {
-		t.Run(keys[0], func(t *testing.T) {
-			h := onKanban(t, 100, 24) // #15 Product search selected in New
+func TestPickingAStatusChangesTheUserStoryAndTheCursorFollows(t *testing.T) {
+	h := onKanban(t, 100, 24) // #15 Product search selected in New
 
-			h.key(keys[0])
+	pickStatus(h, "ready")
 
-			if got := h.app.kanban.ActiveStatus().Name; got != "Ready" || selectedRef(h) != 15 {
-				t.Errorf("cursor on #%d in %q, want #15 in Ready", selectedRef(h), got)
-			}
-			if got := storedStory(t, h, 502); got.Status != 102 || got.Version != 1 {
-				t.Errorf("stored %+v", got)
-			}
-			h.key(keys[1])
-			if got := storedStory(t, h, 502); got.Status != 101 || got.Version != 2 {
-				t.Errorf("not saved with the new version: %+v", got)
-			}
-			if got := h.app.kanban.ActiveStatus().Name; got != "New" {
-				t.Errorf("back in %q", got)
-			}
-		})
+	if got := h.app.kanban.ActiveStatus().Name; got != "Ready" || selectedRef(h) != 15 {
+		t.Errorf("cursor on #%d in %q, want #15 in Ready", selectedRef(h), got)
+	}
+	if got := storedStory(t, h, 502); got.Status != 102 || got.Version != 1 {
+		t.Errorf("stored %+v", got)
+	}
+	pickStatus(h, "new")
+	if got := storedStory(t, h, 502); got.Status != 101 || got.Version != 2 {
+		t.Errorf("not saved with the new version: %+v", got)
+	}
+	if got := h.app.kanban.ActiveStatus().Name; got != "New" {
+		t.Errorf("back in %q", got)
 	}
 }
 
-func TestStatusChangeAtEdgesExplainsWhyNothingHappened(t *testing.T) {
-	h := onKanban(t, 100, 24)
+func TestShiftArrowsAndHLDoNothingOnTheKanbanBoard(t *testing.T) {
+	for _, key := range []string{"shift+left", "shift+right", "H", "L"} {
+		t.Run(key, func(t *testing.T) {
+			h := onKanban(t, 100, 24) // #15 selected in New
+			view := h.plainView()
 
-	h.key("H")
-	if !strings.Contains(h.plainView(), "Already in first status") {
-		t.Errorf("view:\n%s", h.plainView())
-	}
-	h.key("j")
-	if strings.Contains(h.plainView(), "Already in first status") {
-		t.Error("hint stays after the next action")
-	}
-	if n := h.taiga.Calls("PatchUserStory"); n != 0 {
-		t.Errorf("%d requests", n)
+			h.key(key)
+
+			if h.plainView() != view || h.taiga.Calls("PatchUserStory") != 0 {
+				t.Errorf("%s changed the board:\n%s", key, h.plainView())
+			}
+		})
 	}
 }
 
 func TestSavingRowShowsSpinnerAndRefusesFurtherChanges(t *testing.T) {
 	h := onKanban(t, 100, 24)
 
-	save := h.sendOnly(keyMsg("shift+right"))
+	save := h.pickStatusOnly("ready")
 
 	if line := lineWith(h, "#15"); !strings.Contains(line, spinnerFrames[0]) {
 		t.Errorf("no spinner: %q", line)
 	}
-	h.key("shift+right")
+	h.key("s")
 	if !strings.Contains(h.plainView(), "Still saving…") {
 		t.Errorf("view:\n%s", h.plainView())
 	}
@@ -109,7 +115,7 @@ func TestStatusChangeWithoutPermissionDoesNothing(t *testing.T) {
 	h := resumed(t, api, aliceState(webShop.ID))
 	h.start()
 
-	h.key("L")
+	h.key("s")
 
 	if !strings.Contains(h.plainView(), "You don't have permission to change user stories") {
 		t.Errorf("view:\n%s", h.plainView())
@@ -128,7 +134,7 @@ func TestConflictUndoesChangeReloadsBoardAndTellsWhy(t *testing.T) {
 	changed[1].Title, changed[1].Version = "Product search with filters", 1
 	h.taiga.SetStories(webShop.ID, changed...)
 
-	h.key("shift+right")
+	pickStatus(h, "ready")
 
 	if n := h.taiga.Calls("Kanban"); n != 2 {
 		t.Errorf("Kanban loaded %d times, want a reload", n)
@@ -152,7 +158,7 @@ func TestFailedSaveUndoesChangeAndShowsErrorUntilNextAction(t *testing.T) {
 	h := onKanban(t, 100, 24)
 	h.taiga.FailNext("PatchUserStory", taiga.ErrUnreachable)
 
-	h.key("shift+right")
+	pickStatus(h, "ready")
 
 	if !strings.Contains(h.plainView(), "Couldn't save #15: no connection") || !h.app.status[0].isErr {
 		t.Errorf("status %+v", h.app.status)
@@ -170,7 +176,7 @@ func TestExpiredSessionDuringSaveShowsLogin(t *testing.T) {
 	h := onKanban(t, 100, 24)
 	h.taiga.FailNext("PatchUserStory", taiga.ErrSessionExpired)
 
-	h.key("shift+right")
+	pickStatus(h, "ready")
 
 	if h.app.screen != screenLogin {
 		t.Errorf("screen %v", h.app.screen)
@@ -180,7 +186,7 @@ func TestExpiredSessionDuringSaveShowsLogin(t *testing.T) {
 func TestSaveResultAfterBoardSwitchIsIgnored(t *testing.T) {
 	h := onKanban(t, 100, 24)
 	h.taiga.FailNext("PatchUserStory", taiga.ErrConflict)
-	save := h.sendOnly(keyMsg("shift+right"))
+	save := h.pickStatusOnly("ready")
 	h.key(":")
 	h.typeText("taskboard")
 	h.key("enter")
@@ -271,11 +277,11 @@ func TestSaveFailureTexts(t *testing.T) {
 
 func TestFootersAndHelpNameStatusChange(t *testing.T) {
 	h := onKanban(t, 120, 24)
-	if !strings.Contains(h.plainView(), "⇧←/→ status") {
+	if !strings.Contains(h.plainView(), "s status") || strings.Contains(h.plainView(), "⇧") {
 		t.Errorf("Kanban footer:\n%s", h.plainView())
 	}
 	h.key("?")
-	if !strings.Contains(h.plainView(), "previous / next status") {
+	if strings.Contains(h.plainView(), "previous / next status") || strings.Contains(h.plainView(), "⇧") {
 		t.Errorf("Kanban help:\n%s", h.plainView())
 	}
 
@@ -287,17 +293,13 @@ func TestFootersAndHelpNameStatusChange(t *testing.T) {
 
 func TestSavingRowsGolden(t *testing.T) {
 	h := onKanban(t, 100, 12)
-	h.sendOnly(keyMsg("shift+right"))
+	h.pickStatusOnly("ready")
 	h.golden("kanban_saving")
 
 	tb := onTaskboard(t, 100, 14)
-	tb.key("s") // #12
-	tb.typeText("ready")
-	tb.sendOnly(keyMsg("enter"))
+	tb.pickStatusOnly("ready") // #12
 	tb.key("j")
-	tb.key("s")
-	tb.typeText("ready for test")
-	tb.sendOnly(keyMsg("enter")) // #31
+	tb.pickStatusOnly("ready for test") // #31
 	tb.golden("taskboard_saving")
 }
 
@@ -306,14 +308,14 @@ func TestKanbanFooterOffersStatusChangeOnlyWithUserStory(t *testing.T) {
 
 	h.key("l") // the empty Ready tab
 
-	if strings.Contains(h.plainView(), "⇧←/→ status") {
+	if strings.Contains(h.plainView(), "s status") {
 		t.Errorf("view:\n%s", h.plainView())
 	}
 }
 
 func TestItemStaysLockedAcrossBoardSwitchUntilItsSaveIsAnswered(t *testing.T) {
 	h := onKanban(t, 100, 40)
-	save := h.sendOnly(keyMsg("shift+right")) // #15 Product search
+	save := h.pickStatusOnly("ready") // #15 Product search
 	h.key(":")
 	h.typeText("taskboard")
 	h.key("enter")

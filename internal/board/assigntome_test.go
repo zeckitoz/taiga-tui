@@ -50,7 +50,7 @@ func TestKanbanAssignToMeOfUnassignedUserStory(t *testing.T) {
 func TestKanbanAssignToMeRejections(t *testing.T) {
 	p := project
 	p.Permissions.ModifyUserStory = false
-	saving, _ := changeKanban(t, board.NewKanban(project, stories, me))
+	saving, _ := changeKanban(t, board.NewKanban(project, stories, me), 2)
 	tests := []struct {
 		name string
 		k    board.Kanban
@@ -181,7 +181,7 @@ func TestTaskboardAssignToMeIsLockedWhileSavingAndDoesNotReloadTheUserStory(t *t
 	if _, _, err := tb.AssignToMe(nothingSent, board.ConfirmAssignToMe{}); !errors.Is(err, board.ErrStillSaving) {
 		t.Errorf("got %v", err)
 	}
-	if _, _, err := tb.ChangeStatus(board.Next, nothingSent); !errors.Is(err, board.ErrStillSaving) {
+	if _, _, err := tb.PickStatus(22, nothingSent); !errors.Is(err, board.ErrStillSaving) {
 		t.Errorf("status change while saving: %v", err)
 	}
 	done, eff, ok := tb.TaskSaved(save, domain.Task{ID: 904, Ref: 40, Status: 21, Assignee: me, TaskboardOrder: 2, Version: 1})

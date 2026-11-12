@@ -107,7 +107,7 @@ func TestStatusPickerRejectsWithoutPermissionAndWhileSaving(t *testing.T) {
 	}
 
 	k := onKanban(t, 100, 24)
-	save := k.sendOnly(keyMsg("shift+right"))
+	save := k.pickStatusOnly("ready")
 	k.key("s")
 	if k.app.paletteOpen || !strings.Contains(k.plainView(), "Still saving…") {
 		t.Errorf("open %v:\n%s", k.app.paletteOpen, k.plainView())
@@ -120,7 +120,7 @@ func TestFootersAndFullHelpAnnounceThePicker(t *testing.T) {
 		h    *harness
 		want string
 	}{
-		"kanban":    {onKanban(t, 100, 24), "s pick"},
+		"kanban":    {onKanban(t, 100, 24), "s status"},
 		"taskboard": {onTaskboard(t, 120, 30), "s status"},
 	} {
 		t.Run(name, func(t *testing.T) {

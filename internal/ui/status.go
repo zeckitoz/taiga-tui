@@ -32,12 +32,6 @@ func (a App) answerAssignToMe(key tea.KeyPressMsg) (App, tea.Cmd) {
 	return a, nil
 }
 
-// changeStatus moves the selected row of the board shown to the Status
-// next to its own in direction d, or tells why it cannot.
-func (a App) changeStatus(d board.Direction) (App, tea.Cmd) {
-	return a.applyChange(func(a App) (App, board.Effect, error) { return a.shownBoard().changeStatus(a, d) })
-}
-
 // pickStatus changes the selected row of the board shown to the Status
 // with the given ID, or tells why it cannot.
 func (a App) pickStatus(id int64) (App, tea.Cmd) {
@@ -45,8 +39,7 @@ func (a App) pickStatus(id int64) (App, tea.Cmd) {
 }
 
 // applyChange makes a Status Change or Assign to me on the board shown through
-// change. It is the one path of the keys for the next or previous Status,
-// the picker and Assign to me.
+// change. It is the one path of the picker and Assign to me.
 func (a App) applyChange(change func(App) (App, board.Effect, error)) (App, tea.Cmd) {
 	a, eff, err := change(a)
 	if err != nil {
@@ -180,15 +173,6 @@ func (a App) assignToMeTaskboard(confirmed board.ConfirmAssignToMe) (App, board.
 	return a, eff, err
 }
 
-// changeKanbanStatus changes the Status of the selected User Story of the
-// Kanban Board.
-func (a App) changeKanbanStatus(d board.Direction) (App, board.Effect, error) {
-	var eff board.Effect
-	var err error
-	a.kanban, eff, err = a.kanban.ChangeStatus(d, a.sent)
-	return a, eff, err
-}
-
 // statusOptionsKanban returns the Statuses the selected User Story of the
 // Kanban Board can be changed to.
 func (a App) statusOptionsKanban() (board.StatusOptions, error) {
@@ -250,18 +234,6 @@ func (a App) openStatusPalette() App {
 	a.palette.setWidth(a.width)
 	a.palette.scroll(a.paletteListHeight())
 	return a
-}
-
-// changeTaskboardStatus changes the Status of the selected row of the
-// Taskboard.
-func (a App) changeTaskboardStatus(d board.Direction) (App, board.Effect, error) {
-	tb, ok := a.sprints.Taskboard()
-	if !ok {
-		return a, nil, nil
-	}
-	tb, eff, err := tb.ChangeStatus(d, a.sent)
-	a.sprints = a.sprints.WithTaskboard(tb)
-	return a, eff, err
 }
 
 // kanbanSaved feeds the result of a save into the Kanban Board.

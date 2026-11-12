@@ -80,8 +80,6 @@ func (r Rejection) Error() string { return string(r) }
 // The rejections of a Status Change and an Assign to me.
 const (
 	ErrStillSaving     Rejection = "Still saving…"
-	ErrFirstStatus     Rejection = "Already in first status"
-	ErrLastStatus      Rejection = "Already in last status"
 	ErrUnknownStatus   Rejection = "Unknown status"
 	ErrAlreadyAssigned Rejection = "Already assigned to you"
 )
@@ -124,32 +122,6 @@ func statusesOf(p domain.Project, kind ItemKind) []domain.Status {
 		return p.TaskStatuses
 	}
 	return slices.DeleteFunc(slices.Clone(p.UserStoryStatuses), func(s domain.Status) bool { return s.Archived })
-}
-
-// Direction tells whether a Status Change goes to the previous or the next
-// Status.
-type Direction int
-
-// The directions of a Status Change in Taiga order.
-const (
-	Previous Direction = -1
-	Next     Direction = 1
-)
-
-// adjacent returns the ID of the Status next to the Status current among
-// statuses in direction d.
-func adjacent(statuses []domain.Status, current int64, d Direction) (int64, error) {
-	i := slices.IndexFunc(statuses, func(s domain.Status) bool { return s.ID == current })
-	j := i + int(d)
-	switch {
-	case i < 0:
-		return 0, ErrUnknownStatus
-	case j < 0:
-		return 0, ErrFirstStatus
-	case j >= len(statuses):
-		return 0, ErrLastStatus
-	}
-	return statuses[j].ID, nil
 }
 
 // Sent tracks the saves sent to Taiga whose results have not arrived yet,
@@ -253,37 +225,15 @@ func (s saves) refusal(p domain.Project, sent Sent, it workItem) error {
 	return nil
 }
 
-// target picks the Status a change of an item goes to among its statuses.
-type target func(statuses []domain.Status, current int64) (int64, error)
-
-// toNeighbour goes to the Status next to the current one in direction d.
-func toNeighbour(d Direction) target {
-	return func(statuses []domain.Status, current int64) (int64, error) {
-		return adjacent(statuses, current, d)
-	}
-}
-
-// toStatus goes to the Status with the given ID, which must be one the item
-// can have.
-func toStatus(id int64) target {
-	return func(statuses []domain.Status, _ int64) (int64, error) {
-		if !slices.ContainsFunc(statuses, func(s domain.Status) bool { return s.ID == id }) {
-			return 0, ErrUnknownStatus
-		}
-		return id, nil
-	}
-}
-
-// changeStatus starts the Status Change of it to the Status that to picks,
-// unless the Team Member may not change it, a save of it is still waiting
-// for its result in sent, or to refuses.
-func (s saves) changeStatus(p domain.Project, sent Sent, it workItem, to target) (saves, Save, error) {
+// changeStatus starts the Status Change of it to the Status with the given
+// ID, unless the Team Member may not change it, a save of it is still
+// waiting for its result in sent, or it cannot have that Status.
+func (s saves) changeStatus(p domain.Project, sent Sent, it workItem, status int64) (saves, Save, error) {
 	if err := s.refusal(p, sent, it); err != nil {
 		return s, Save{}, err
 	}
-	status, err := to(statusesOf(p, it.kind), it.status)
-	if err != nil {
-		return s, Save{}, err
+	if !slices.ContainsFunc(statusesOf(p, it.kind), func(st domain.Status) bool { return st.ID == status }) {
+		return s, Save{}, ErrUnknownStatus
 	}
 	sv, save := s.start(sent, Save{Kind: it.kind, ID: it.id, Ref: it.ref, Version: it.version, Status: status})
 	return sv, save, nil

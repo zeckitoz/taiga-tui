@@ -273,29 +273,17 @@ func (k Kanban) selected() (domain.UserStory, bool) {
 	return k.active()[i], true
 }
 
-// ChangeStatus moves the selected User Story to the active Status next to
-// its own in direction d right away, with the cursor following it into its
-// new tab, and returns the effect of saving the change, which the App
-// records in sent once it sends it. It returns a Rejection instead if the
-// change cannot be made, and neither if no User Story is selected.
-func (k Kanban) ChangeStatus(d Direction, sent Sent) (Kanban, Effect, error) {
-	return k.change(toNeighbour(d), sent)
-}
-
-// PickStatus is like ChangeStatus, but moves the selected User Story to
-// the active Status with the given ID, which may be any one.
+// PickStatus moves the selected User Story to the Status with the given
+// ID right away, with the cursor following it into its new tab, and
+// returns the effect of saving the change, which the App records in sent
+// once it sends it. It returns a Rejection instead if the change cannot be
+// made, and neither if no User Story is selected.
 func (k Kanban) PickStatus(id int64, sent Sent) (Kanban, Effect, error) {
-	return k.change(toStatus(id), sent)
-}
-
-// change starts the Status Change of the selected User Story to the
-// Status that to picks.
-func (k Kanban) change(to target, sent Sent) (Kanban, Effect, error) {
 	it, ok := k.selectedItem()
 	if !ok {
 		return k, nil, nil
 	}
-	sv, save, err := k.saves.changeStatus(k.project, sent, it, to)
+	sv, save, err := k.saves.changeStatus(k.project, sent, it, id)
 	if err != nil {
 		return k, nil, err
 	}

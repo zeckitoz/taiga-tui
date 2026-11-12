@@ -12,14 +12,14 @@ import (
 // nothingSent is the Sent of an App that has no save waiting.
 var nothingSent = board.Sent{}
 
-// changeKanban moves the selected User Story to the next Status and fails
-// the test unless it asks to save it.
-func changeKanban(t *testing.T, k board.Kanban) (board.Kanban, board.Save) {
+// changeKanban moves the selected User Story to the Status with the given ID
+// and fails the test unless it asks to save it.
+func changeKanban(t *testing.T, k board.Kanban, status int64) (board.Kanban, board.Save) {
 	t.Helper()
-	k, eff, err := k.ChangeStatus(board.Next, nothingSent)
+	k, eff, err := k.PickStatus(status, nothingSent)
 	save, ok := eff.(board.Save)
 	if err != nil || !ok {
-		t.Fatalf("ChangeStatus: effect %#v, error %v", eff, err)
+		t.Fatalf("PickStatus: effect %#v, error %v", eff, err)
 	}
 	return k, save
 }
@@ -38,7 +38,7 @@ func TestKanbanStatusChangeIsOptimisticAndCursorFollows(t *testing.T) {
 	versioned[1].Version = 6 // #2 First
 	k := board.NewKanban(project, versioned, me)
 
-	k, save := changeKanban(t, k)
+	k, save := changeKanban(t, k, 2)
 
 	if save.Kind != board.UserStoryItem || save.ID != 11 || save.Ref != 2 || save.Status != 2 || save.Version != 6 {
 		t.Errorf("save %+v", save)
@@ -57,30 +57,23 @@ func TestKanbanStatusChangeIsOptimisticAndCursorFollows(t *testing.T) {
 	}
 }
 
-func TestKanbanStatusChangeSkipsArchivedStatusesAndStopsAtEdges(t *testing.T) {
+func TestKanbanStatusChangeRefusesStatusesTheUserStoryCannotHave(t *testing.T) {
 	k := board.NewKanban(project, stories, me)
 
-	if _, eff, err := k.ChangeStatus(board.Previous, nothingSent); !errors.Is(err, board.ErrFirstStatus) || eff != nil {
-		t.Errorf("first status: %v, %#v", err, eff)
+	for name, id := range map[string]int64{"archived": 3, "of another project": 99} {
+		if _, eff, err := k.PickStatus(id, nothingSent); !errors.Is(err, board.ErrUnknownStatus) || eff != nil {
+			t.Errorf("%s: %v, %#v", name, err, eff)
+		}
 	}
-	if err := board.ErrFirstStatus; err.Error() != "Already in first status" {
+	if err := board.ErrUnknownStatus; err.Error() != "Unknown status" {
 		t.Errorf("text %q", err)
-	}
-	k = k.NextTab() // #4 Working in In progress
-	k, save := changeKanban(t, k)
-	if save.Status != 4 {
-		t.Errorf("saves Status %d, want Done after the archived Old", save.Status)
-	}
-	k, _ = k.Saved(save, domain.UserStory{ID: 13, Ref: 4, Title: "Working", Status: 4, Version: 1})
-	if _, _, err := k.ChangeStatus(board.Next, nothingSent); !errors.Is(err, board.ErrLastStatus) || err.Error() != "Already in last status" {
-		t.Errorf("last status: %v", err)
 	}
 }
 
 func TestKanbanRejectsChangesWhileSaving(t *testing.T) {
-	k, _ := changeKanban(t, board.NewKanban(project, stories, me))
+	k, _ := changeKanban(t, board.NewKanban(project, stories, me), 2)
 
-	_, eff, err := k.ChangeStatus(board.Next, nothingSent)
+	_, eff, err := k.PickStatus(4, nothingSent)
 
 	if !errors.Is(err, board.ErrStillSaving) || err.Error() != "Still saving…" || eff != nil {
 		t.Errorf("got %v, %#v", err, eff)
@@ -91,7 +84,7 @@ func TestKanbanRejectsChangesWithoutPermission(t *testing.T) {
 	p := project
 	p.Permissions.ModifyUserStory = false
 
-	k, eff, err := board.NewKanban(p, stories, me).ChangeStatus(board.Next, nothingSent)
+	k, eff, err := board.NewKanban(p, stories, me).PickStatus(2, nothingSent)
 
 	if err == nil || err.Error() != "You don't have permission to change user stories" || eff != nil {
 		t.Errorf("got %v, %#v", err, eff)
@@ -102,7 +95,7 @@ func TestKanbanRejectsChangesWithoutPermission(t *testing.T) {
 }
 
 func TestKanbanTakesSavedUserStoryAndUnlocksIt(t *testing.T) {
-	k, save := changeKanban(t, board.NewKanban(project, stories, me))
+	k, save := changeKanban(t, board.NewKanban(project, stories, me), 2)
 
 	k, ok := k.Saved(save, domain.UserStory{ID: 11, Ref: 2, Title: "First (saved)", Status: 2, Version: 1, KanbanOrder: 10})
 
@@ -112,7 +105,7 @@ func TestKanbanTakesSavedUserStoryAndUnlocksIt(t *testing.T) {
 	if r := selectedRow(k); r.ID != 11 || r.Saving || r.Title != "First (saved)" {
 		t.Errorf("selected %+v", r)
 	}
-	_, again := changeKanban(t, k)
+	_, again := changeKanban(t, k, 4)
 	if again.Version != 1 || again.Status != 4 {
 		t.Errorf("next save %+v, want the saved version", again)
 	}
@@ -127,7 +120,7 @@ func TestKanbanUndoesChangeThatWasNotSaved(t *testing.T) {
 		{board.SaveNotFound, true},
 		{board.SaveFailed, false},
 	} {
-		k, save := changeKanban(t, board.NewKanban(project, stories, me))
+		k, save := changeKanban(t, board.NewKanban(project, stories, me), 2)
 
 		k, eff, ok := k.NotSaved(save, tt.failure)
 
@@ -143,14 +136,14 @@ func TestKanbanUndoesChangeThatWasNotSaved(t *testing.T) {
 		if r := selectedRow(k); r.ID != 11 || r.Saving {
 			t.Errorf("%v: selected %+v", tt.failure, r)
 		}
-		if _, _, err := k.ChangeStatus(board.Next, nothingSent); err != nil {
+		if _, _, err := k.PickStatus(2, nothingSent); err != nil {
 			t.Errorf("%v: still locked: %v", tt.failure, err)
 		}
 	}
 }
 
 func TestKanbanKeepsChangeThatIsSavingAcrossReload(t *testing.T) {
-	k, save := changeKanban(t, board.NewKanban(project, stories, me))
+	k, save := changeKanban(t, board.NewKanban(project, stories, me), 2)
 
 	k = k.Reload(stories) // still the old Status on the server
 
@@ -163,7 +156,7 @@ func TestKanbanKeepsChangeThatIsSavingAcrossReload(t *testing.T) {
 }
 
 func TestKanbanIgnoresResultsOfDroppedSaves(t *testing.T) {
-	k, save := changeKanban(t, board.NewKanban(project, stories, me))
+	k, save := changeKanban(t, board.NewKanban(project, stories, me), 2)
 
 	k = k.DropSaves()
 
@@ -181,7 +174,7 @@ func TestKanbanIgnoresResultsOfDroppedSaves(t *testing.T) {
 func TestKanbanStatusChangeNeverChangesTheReceiver(t *testing.T) {
 	k := board.NewKanban(project, stories, me)
 
-	changed, save := changeKanban(t, k)
+	changed, save := changeKanban(t, k, 2)
 	_, _ = changed.Saved(save, domain.UserStory{ID: 11, Status: 2})
 
 	if k.ActiveStatus().Name != "New" || selectedRow(k).Saving || k.Saving() || !changed.Saving() {
@@ -190,21 +183,22 @@ func TestKanbanStatusChangeNeverChangesTheReceiver(t *testing.T) {
 }
 
 func TestKanbanStatusChangeOnEmptyTabDoesNothing(t *testing.T) {
-	k, eff, err := board.NewKanban(project, stories, me).PrevTab().ChangeStatus(board.Next, nothingSent)
+	k, eff, err := board.NewKanban(project, stories, me).PrevTab().PickStatus(2, nothingSent)
 
 	if eff != nil || err != nil || k.Saving() {
 		t.Errorf("got %#v, %v", eff, err)
 	}
 }
 
-// changeTaskboard changes the Status of the selected row and fails the test
+// changeTaskboard changes the Status of the selected row to the one with the
+// given ID and fails the test
 // unless it asks to save it.
-func changeTaskboard(t *testing.T, tb board.Taskboard, d board.Direction) (board.Taskboard, board.Save) {
+func changeTaskboard(t *testing.T, tb board.Taskboard, status int64) (board.Taskboard, board.Save) {
 	t.Helper()
-	tb, eff, err := tb.ChangeStatus(d, nothingSent)
+	tb, eff, err := tb.PickStatus(status, nothingSent)
 	save, ok := eff.(board.Save)
 	if err != nil || !ok {
-		t.Fatalf("ChangeStatus: effect %#v, error %v", eff, err)
+		t.Fatalf("PickStatus: effect %#v, error %v", eff, err)
 	}
 	return tb, save
 }
@@ -212,7 +206,7 @@ func changeTaskboard(t *testing.T, tb board.Taskboard, d board.Direction) (board
 func TestTaskboardTaskStatusChangeKeepsRowAndChangesLabel(t *testing.T) {
 	tb := press(newTaskboard(), down, down, down, down) // T#31, In progress
 
-	tb, save := changeTaskboard(t, tb, board.Next)
+	tb, save := changeTaskboard(t, tb, 23)
 
 	if save.Kind != board.TaskItem || save.ID != 901 || save.Ref != 31 || save.Status != 23 {
 		t.Errorf("save %+v", save)
@@ -229,7 +223,7 @@ func TestTaskboardTaskStatusChangeKeepsRowAndChangesLabel(t *testing.T) {
 func TestTaskboardUserStoryStatusChangeUsesUserStoryStatuses(t *testing.T) {
 	tb := press(newTaskboard(), down, down) // US#12, In progress
 
-	tb, save := changeTaskboard(t, tb, board.Next)
+	tb, save := changeTaskboard(t, tb, 4)
 
 	if save.Kind != board.UserStoryItem || save.ID != 501 || save.Status != 4 {
 		t.Errorf("save %+v", save)
@@ -248,7 +242,7 @@ func TestTaskboardUserStoryStatusChangeUsesUserStoryStatuses(t *testing.T) {
 func TestTaskboardGroupWithoutUserStoryHasNoStatus(t *testing.T) {
 	tb := press(newTaskboard(), down, down, down, down, down, down) // the group without User Story
 
-	_, eff, err := tb.ChangeStatus(board.Next, nothingSent)
+	_, eff, err := tb.PickStatus(22, nothingSent)
 
 	if eff != nil || err != nil {
 		t.Errorf("got %#v, %v", eff, err)
@@ -260,18 +254,18 @@ func TestTaskboardRejectsTaskChangesWithoutPermission(t *testing.T) {
 	p.Permissions.ModifyTask = false
 	tb := press(board.NewTaskboard(p, sprint, sprintContent, me), down)
 
-	_, _, err := tb.ChangeStatus(board.Next, nothingSent)
+	_, _, err := tb.PickStatus(22, nothingSent)
 
 	if err == nil || err.Error() != "You don't have permission to change tasks" {
 		t.Errorf("got %v", err)
 	}
-	if _, _, err := press(tb, up).ChangeStatus(board.Previous, nothingSent); err != nil {
+	if _, _, err := press(tb, up).PickStatus(2, nothingSent); err != nil {
 		t.Errorf("User Story: %v", err)
 	}
 }
 
 func TestTaskboardSavedTaskReloadsItsUserStory(t *testing.T) {
-	tb, save := changeTaskboard(t, press(newTaskboard(), down, down, down, down), board.Next)
+	tb, save := changeTaskboard(t, press(newTaskboard(), down, down, down, down), 23)
 
 	tb, eff, ok := tb.TaskSaved(save, domain.Task{ID: 901, Ref: 31, Title: "Card number", Status: 23, UserStory: 501, Assignee: 42, TaskboardOrder: 2, Version: 1})
 
@@ -295,7 +289,7 @@ func TestTaskboardSavedTaskReloadsItsUserStory(t *testing.T) {
 
 func TestTaskboardSavedTaskWithoutUserStoryInSprintReloadsNothing(t *testing.T) {
 	tb := press(newTaskboard(), down, down, down, down, down, down, down, down) // T#40 without User Story
-	tb, save := changeTaskboard(t, tb, board.Next)
+	tb, save := changeTaskboard(t, tb, 22)
 
 	_, eff, ok := tb.TaskSaved(save, domain.Task{ID: 904, Ref: 40, Status: 22, Version: 1})
 
@@ -305,7 +299,7 @@ func TestTaskboardSavedTaskWithoutUserStoryInSprintReloadsNothing(t *testing.T) 
 }
 
 func TestTaskboardUndoesChangeThatWasNotSaved(t *testing.T) {
-	tb, save := changeTaskboard(t, press(newTaskboard(), down, down, down, down), board.Next)
+	tb, save := changeTaskboard(t, press(newTaskboard(), down, down, down, down), 23)
 
 	tb, eff, ok := tb.NotSaved(save, board.SaveConflict)
 
@@ -322,7 +316,7 @@ func TestOpeningOtherSprintDropsSavesOfTaskboardShown(t *testing.T) {
 	s, load := s.Open(sprint)
 	s, _ = s.TaskboardLoaded(load, sprintContent)
 	tb, _ := s.Taskboard()
-	tb, save := changeTaskboard(t, press(tb, down), board.Previous)
+	tb, save := changeTaskboard(t, press(tb, down), 22)
 	s = s.WithTaskboard(tb)
 
 	s, other := s.Open(sprint2)
@@ -342,21 +336,21 @@ func TestOpeningOtherSprintDropsSavesOfTaskboardShown(t *testing.T) {
 }
 
 func TestItemStaysLockedUntilItsSaveIsAnsweredEvenAfterLeavingTheBoard(t *testing.T) {
-	_, save := changeKanban(t, board.NewKanban(project, stories, me))
+	_, save := changeKanban(t, board.NewKanban(project, stories, me), 2)
 	sent := nothingSent.Add(save)
 	back := board.NewKanban(project, stories, me) // the board loaded again, #2 selected
 
-	if _, _, err := back.ChangeStatus(board.Next, sent); !errors.Is(err, board.ErrStillSaving) {
+	if _, _, err := back.PickStatus(2, sent); !errors.Is(err, board.ErrStillSaving) {
 		t.Errorf("Kanban: %v, want ErrStillSaving", err)
 	}
 	content := domain.SprintContent{UserStories: []domain.UserStory{{ID: 11, Ref: 2, Status: 1}}}
 	tb := board.NewTaskboard(project, sprint, content, me)
-	if _, _, err := tb.ChangeStatus(board.Next, sent); !errors.Is(err, board.ErrStillSaving) {
+	if _, _, err := tb.PickStatus(2, sent); !errors.Is(err, board.ErrStillSaving) {
 		t.Errorf("Taskboard: %v, want ErrStillSaving", err)
 	}
 
 	sent = sent.Answered(save)
-	_, eff, err := tb.ChangeStatus(board.Next, sent)
+	_, eff, err := tb.PickStatus(2, sent)
 	again, ok := eff.(board.Save)
 	if err != nil || !ok {
 		t.Fatalf("after the answer: %#v, %v", eff, err)
@@ -374,7 +368,7 @@ func TestAnswerOfAnEarlierSaveKeepsTheLaterOneLocked(t *testing.T) {
 	sent = sent.Answered(first)
 
 	k := board.NewKanban(project, stories, me)
-	if _, _, err := k.ChangeStatus(board.Next, sent); !errors.Is(err, board.ErrStillSaving) {
+	if _, _, err := k.PickStatus(2, sent); !errors.Is(err, board.ErrStillSaving) {
 		t.Errorf("got %v, want ErrStillSaving", err)
 	}
 }
@@ -388,12 +382,12 @@ func TestBoardsTakeItemsSavedWhileTheyWereLeft(t *testing.T) {
 	if k.ActiveStatus().Name != "New" || k.Tabs()[1].Count != 2 {
 		t.Errorf("Kanban tabs %+v", k.Tabs())
 	}
-	_, save := changeKanban(t, k.NextTab())
+	_, save := changeKanban(t, k.NextTab(), 4)
 	if save.ID != 11 || save.Version != 3 {
 		t.Errorf("Kanban save %+v, want the saved version", save)
 	}
-	_, task := changeTaskboard(t, press(tb, down), board.Next)
-	_, story := changeTaskboard(t, tb, board.Next)
+	_, task := changeTaskboard(t, press(tb, down), 23)
+	_, story := changeTaskboard(t, tb, 2)
 	if task.Version != 4 || task.Status != 23 || story.Version != 5 || story.Status != 2 {
 		t.Errorf("Taskboard saves %+v and %+v", task, story)
 	}
@@ -404,7 +398,7 @@ func TestBoardsTakeItemsSavedWhileTheyWereLeft(t *testing.T) {
 
 func TestTaskboardUserStoryRowRevertsStatusWhenSaveFails(t *testing.T) {
 	tb := press(newTaskboard(), down, down) // US#12, In progress
-	tb, save := changeTaskboard(t, tb, board.Next)
+	tb, save := changeTaskboard(t, tb, 4)
 
 	tb, _, ok := tb.NotSaved(save, board.SaveFailed)
 
@@ -450,7 +444,7 @@ func TestKanbanMovesToAnyStatusAndSavesIt(t *testing.T) {
 func TestPickStatusRefusesWhatTheNeighbourKeysRefuse(t *testing.T) {
 	noPerm := project
 	noPerm.Permissions.ModifyUserStory = false
-	saving, _ := changeKanban(t, board.NewKanban(project, stories, me))
+	saving, _ := changeKanban(t, board.NewKanban(project, stories, me), 2)
 
 	for name, tt := range map[string]struct {
 		k    board.Kanban

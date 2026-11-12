@@ -957,10 +957,6 @@ func (a App) updateKanban(key tea.KeyPressMsg) (App, tea.Cmd) {
 		if a.kanban.Loaded() {
 			return a.loadKanban()
 		}
-	case "shift+left", "H":
-		return a.changeStatus(board.Previous)
-	case "shift+right", "L":
-		return a.changeStatus(board.Next)
 	case "left", "h":
 		a.kanban = a.kanban.PrevTab()
 	case "right", "l":

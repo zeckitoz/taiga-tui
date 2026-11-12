@@ -23,11 +23,11 @@ const (
 
 // kanbanKeys returns the footer of the Kanban Board for the selected row.
 func kanbanKeys(k board.Kanban) []string {
-	var keys []string
+	keys := []string{"←/→ tab", "↑/↓ move", "↵ detail"}
 	if k.SelectedIndex() >= 0 {
-		keys = append(keys, "⇧←/→ status", "s pick", "a assign to me")
+		keys = append(keys, "a assign to me", "s status")
 	}
-	return append(keys, "←/→ tab", "↑/↓ move", "↵ detail", "r refresh", ": menu", "? help")
+	return append(keys, "r refresh", ": menu", "? help")
 }
 
 // Placement of the detail view: right of the list from detailRightFrom
