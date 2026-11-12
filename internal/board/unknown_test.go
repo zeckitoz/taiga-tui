@@ -45,7 +45,7 @@ func TestKanbanUnknownStatusReloadsProjectOncePerLoad(t *testing.T) {
 	k := loadedKanban(t, project, newStatusStories)
 
 	k, eff := k.ReloadProjectOnUnknown()
-	if eff != (board.ReloadProject{}) {
+	if _, ok := eff.(board.ReloadProject); !ok {
 		t.Fatalf("effect %v, want ReloadProject", eff)
 	}
 	if _, again := k.ReloadProjectOnUnknown(); again != nil {
@@ -62,16 +62,19 @@ func TestKanbanUnknownStatusReloadsProjectOncePerLoad(t *testing.T) {
 func TestKanbanUnknownMemberReloadsProject(t *testing.T) {
 	k := loadedKanban(t, project, []domain.UserStory{{ID: 10, Status: 1, Assignees: []int64{45}}})
 
-	if _, eff := k.ReloadProjectOnUnknown(); eff != (board.ReloadProject{}) {
-		t.Errorf("effect %v, want ReloadProject", eff)
+	if _, eff := k.ReloadProjectOnUnknown(); eff == nil {
+		t.Error("no ReloadProject for an unknown member")
 	}
 }
 
 func TestKanbanProjectReloadedResolvesUnknownStatus(t *testing.T) {
 	k := loadedKanban(t, project, newStatusStories)
-	k, _ = k.ReloadProjectOnUnknown()
+	k, eff := k.ReloadProjectOnUnknown()
 
-	k = k.ProjectReloaded(projectWithNewIDs())
+	k, ok := k.ProjectReloaded(eff.(board.ReloadProject), projectWithNewIDs())
+	if !ok {
+		t.Fatal("result dropped")
+	}
 
 	names := []string{}
 	for _, tab := range k.Tabs() {
@@ -87,9 +90,9 @@ func TestKanbanProjectReloadedResolvesUnknownStatus(t *testing.T) {
 
 func TestKanbanStillUnknownStatusGetsUnknownTab(t *testing.T) {
 	k := loadedKanban(t, project, newStatusStories)
-	k, _ = k.ReloadProjectOnUnknown()
+	k, eff := k.ReloadProjectOnUnknown()
 
-	k = k.ProjectReloaded(project) // the admin's change is still not there
+	k, _ = k.ProjectReloaded(eff.(board.ReloadProject), project) // the admin's change is still not there
 
 	tabs := k.Tabs()
 	last := tabs[len(tabs)-1]
@@ -141,14 +144,17 @@ func TestTaskboardUnknownTaskStatusReloadsProjectOncePerLoad(t *testing.T) {
 	s := taskboardWith(t, scrum, c)
 
 	s, eff := s.ReloadProjectOnUnknown()
-	if eff != (board.ReloadProject{}) {
+	if _, ok := eff.(board.ReloadProject); !ok {
 		t.Fatalf("effect %v, want ReloadProject", eff)
 	}
 	if _, again := s.ReloadProjectOnUnknown(); again != nil {
 		t.Errorf("second reload in the same load: %v", again)
 	}
 
-	s = s.ProjectReloaded(projectWithNewIDs())
+	s, ok := s.ProjectReloaded(eff.(board.ReloadProject), projectWithNewIDs())
+	if !ok {
+		t.Fatal("result dropped")
+	}
 	if tb, _ := s.Taskboard(); tb.Rows()[0].Kind != board.RowUserStory || tb.Rows()[1].Status.Name != "Blocked" {
 		t.Errorf("rows %+v", tb.Rows())
 	}
@@ -172,8 +178,51 @@ func TestTaskboardUnknownMemberAndUserStoryStatusReloadProject(t *testing.T) {
 		"story status":   {UserStories: []domain.UserStory{{ID: 5, Status: 99}}},
 	} {
 		s := taskboardWith(t, scrum, c)
-		if _, eff := s.ReloadProjectOnUnknown(); eff != (board.ReloadProject{}) {
-			t.Errorf("%s: effect %v", name, eff)
+		if _, eff := s.ReloadProjectOnUnknown(); eff == nil {
+			t.Errorf("%s: no ReloadProject", name)
 		}
+	}
+}
+
+func TestKanbanDropsStaleProjectReload(t *testing.T) {
+	k := loadedKanban(t, project, newStatusStories)
+	k, eff := k.ReloadProjectOnUnknown()
+	stale := eff.(board.ReloadProject)
+
+	k, load := k.LoadUserStories() // a newer load makes the reload pointless
+	k, _ = k.UserStoriesLoaded(load, newStatusStories)
+
+	if _, ok := k.ProjectReloaded(stale, projectWithNewIDs()); ok {
+		t.Error("took the result of a reload for an earlier load")
+	}
+	if _, ok := k.ProjectReloaded(board.ReloadProject{ProjectID: 99, Generation: stale.Generation + 1}, projectWithNewIDs()); ok {
+		t.Error("took the result for another project")
+	}
+	if _, ok := k.CancelLoads().ProjectReloaded(stale, projectWithNewIDs()); ok {
+		t.Error("took a result after the loads were canceled")
+	}
+}
+
+func TestTaskboardDropsStaleProjectReload(t *testing.T) {
+	c := domain.SprintContent{Tasks: []domain.Task{{ID: 1, Status: 24}}}
+	s := taskboardWith(t, scrum, c)
+	s, eff := s.ReloadProjectOnUnknown()
+	stale := eff.(board.ReloadProject)
+
+	s, load := s.Open(sprint) // reopening is a new load
+	s, _ = s.TaskboardLoaded(load, c)
+
+	if _, ok := s.ProjectReloaded(stale, projectWithNewIDs()); ok {
+		t.Error("took the result of a reload for an earlier load")
+	}
+	if _, eff := s.ReloadProjectOnUnknown(); eff == nil {
+		t.Error("the new load may reload the project once")
+	}
+}
+
+func TestWithProjectTakesTheProjectWithoutAGeneration(t *testing.T) {
+	k := loadedKanban(t, project, newStatusStories).WithProject(projectWithNewIDs())
+	if tabs := k.Tabs(); tabs[len(tabs)-1].Name != "Review" {
+		t.Errorf("tabs %+v", tabs)
 	}
 }

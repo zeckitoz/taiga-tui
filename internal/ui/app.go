@@ -85,6 +85,13 @@ const waitingForKeyring = "Waiting for system keyring…"
 // not in the project list any more.
 const hintDefaultGone = "Your default project is no longer available"
 
+// failedBoard is a board that failed to load: screenBoard shows text in place
+// of the board, and `r` calls retry.
+type failedBoard struct {
+	text  string
+	retry func(App) (App, tea.Cmd)
+}
+
 type (
 	resumeDoneMsg  struct{ ok bool }
 	keyringSlowMsg struct{}
@@ -114,6 +121,8 @@ type (
 	// projectReloadedMsg is the result of reloading the project data after
 	// the boards met IDs it did not know.
 	projectReloadedMsg struct {
+		on      config.Board
+		load    board.ReloadProject
 		project domain.Project
 		err     error
 	}
@@ -191,9 +200,9 @@ type App struct {
 	// failure and retry describe a failed load on screenFailed.
 	failure string
 	retry   func(App) (App, tea.Cmd)
-	// boardErr is the text of a board that failed to load, shown in the body
-	// of screenBoard in place of the board, with retry as its `r`.
-	boardErr string
+	// failedBoard is set while the board shown failed to load and has
+	// nothing to show, see failedBoard.
+	failedBoard *failedBoard
 
 	me       domain.TeamMember
 	projects []domain.ProjectSummary
@@ -579,7 +588,7 @@ func (a App) saveState() App {
 func (a App) startLoading(text string, cmd tea.Cmd) (App, tea.Cmd) {
 	a.screen = screenLoading
 	a.loading = text
-	a.boardErr = ""
+	a.failedBoard = nil
 	return a, tea.Batch(a.spinner.start(), cmd)
 }
 
@@ -607,8 +616,7 @@ func (a App) boardFailed(err error, what string, retry func(App) (App, tea.Cmd))
 		return a.sessionExpired(), nil
 	}
 	a.screen = screenBoard
-	a.boardErr = what + ": " + reason(err)
-	a.retry = retry
+	a.failedBoard = &failedBoard{text: what + ": " + reason(err), retry: retry}
 	a.scrollBoard()
 	return a, nil
 }
@@ -618,7 +626,7 @@ func (a App) boardFailed(err error, what string, retry func(App) (App, tea.Cmd))
 func (a App) updateFailedBoard(key tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	switch key.String() {
 	case "r":
-		return a.retry(a)
+		return a.failedBoard.retry(a)
 	case "q":
 		return a, tea.Quit
 	case ":", "ctrl+k":
@@ -643,14 +651,26 @@ func (a App) projectSwitchFailed(err error) App {
 	return a
 }
 
-// reloadProject returns the command that reloads the project data, which the
-// boards ask for when loaded data refers to unknown Statuses or Team Members.
-func (a App) reloadProject() tea.Cmd {
+// run translates an effect that board b returned into its command.
+func (a App) run(eff board.Effect, b config.Board) tea.Cmd {
 	api, slug := a.deps.Taiga, a.project.Slug
-	return func() tea.Msg {
-		p, err := api.Project(context.Background(), slug)
-		return projectReloadedMsg{project: p, err: err}
+	switch eff := eff.(type) {
+	case board.ReloadProject:
+		return func() tea.Msg {
+			p, err := api.Project(context.Background(), slug)
+			return projectReloadedMsg{on: b, load: eff, project: p, err: err}
+		}
 	}
+	return nil
+}
+
+// afterLoad follows a load of board b: it reloads the project if the loaded
+// data refers to unknown Statuses or Team Members, and loads the detail.
+func (a App) afterLoad(b config.Board) (App, tea.Cmd) {
+	a, eff := boardOps(b).unknownIDs(a)
+	reload := a.run(eff, b)
+	a, detail := a.loadDetail()
+	return a, tea.Batch(reload, detail)
 }
 
 // projectReloaded hands the reloaded project to the boards. A failure leaves
@@ -660,12 +680,12 @@ func (a App) projectReloaded(msg projectReloadedMsg) App {
 	if msg.err != nil {
 		return a.expireOn(msg.err)
 	}
-	if msg.project.ID != a.project.ID {
+	a, ok := boardOps(msg.on).projectReloaded(a, msg.load, msg.project)
+	if !ok {
 		return a
 	}
 	a.project = msg.project
-	a.kanban = a.kanban.ProjectReloaded(msg.project)
-	a.sprints = a.sprints.ProjectReloaded(msg.project)
+	a = boardOps(otherBoard(msg.on)).withProject(a, msg.project)
 	a.scrollBoard()
 	return a
 }
@@ -833,7 +853,7 @@ func (a App) openBoard(b config.Board) (App, tea.Cmd) {
 		a = boardOps(a.board).cancelLoads(a)
 	}
 	a.board = b
-	a.boardErr = ""
+	a.failedBoard = nil
 	if a.state.LastBoard != b {
 		a.state.LastBoard = b
 		a = a.saveState()
@@ -1011,12 +1031,7 @@ func (a App) taskboardLoaded(msg taskboardLoadedMsg) (tea.Model, tea.Cmd) {
 	a.sprints, _ = a.sprints.TaskboardLoaded(msg.load, msg.content)
 	a.screen = screenBoard
 	a.scrollBoard()
-	var reload tea.Cmd
-	if sp, eff := a.sprints.ReloadProjectOnUnknown(); eff != nil {
-		a.sprints, reload = sp, a.reloadProject()
-	}
-	a, detail := a.loadDetail()
-	return a, tea.Batch(reload, detail)
+	return a.afterLoad(config.BoardTaskboard)
 }
 
 // withTaskboard applies change to the Taskboard shown, if any.
@@ -1070,12 +1085,7 @@ func (a App) kanbanLoaded(msg kanbanLoadedMsg) (tea.Model, tea.Cmd) {
 	a.kanban, _ = a.kanban.UserStoriesLoaded(msg.load, msg.stories)
 	a.screen = screenBoard
 	a.scrollBoard()
-	var reload tea.Cmd
-	if k, eff := a.kanban.ReloadProjectOnUnknown(); eff != nil {
-		a.kanban, reload = k, a.reloadProject()
-	}
-	a, detail := a.loadDetail()
-	return a, tea.Batch(reload, detail)
+	return a.afterLoad(config.BoardKanban)
 }
 
 // loadDetail loads the description of the selected row if the detail view
@@ -1154,7 +1164,7 @@ func (a App) updateBoard(msg tea.Msg) (tea.Model, tea.Cmd) {
 	if a.asked != nil {
 		return a.answerAssignToMe(key)
 	}
-	if a.boardErr != "" {
+	if a.failedBoard != nil {
 		return a.updateFailedBoard(key)
 	}
 	switch key.String() {
@@ -1535,8 +1545,8 @@ func (a App) taskboardPath() string {
 }
 
 func (a App) boardBody() string {
-	if a.boardErr != "" {
-		return centered(a.width, a.bodyHeight(), errorStyle.Render(a.boardErr))
+	if a.failedBoard != nil {
+		return centered(a.width, a.bodyHeight(), errorStyle.Render(a.failedBoard.text))
 	}
 	return a.shownBoard().body(a, a.bodyHeight())
 }
@@ -1556,7 +1566,7 @@ func (a App) taskboardBody(h int) string {
 }
 
 func (a App) boardKeys() []string {
-	if a.boardErr != "" {
+	if a.failedBoard != nil {
 		return []string{"r retry", ": menu", "q quit"}
 	}
 	return a.shownBoard().keys(a)

@@ -36,7 +36,7 @@ func TestBoardLoadFailureWithoutDataShowsErrorInBoardAndRetries(t *testing.T) {
 
 	h.key("r")
 
-	if h.app.boardErr != "" || !h.app.kanban.Loaded() || strings.Contains(h.plainView(), "Couldn't load") {
+	if h.app.failedBoard != nil || !h.app.kanban.Loaded() || strings.Contains(h.plainView(), "Couldn't load") {
 		t.Errorf("retry failed:\n%s", h.plainView())
 	}
 	if got := h.taiga.Calls("Kanban"); got != 2 {
@@ -56,7 +56,7 @@ func TestPaletteStaysUsableOnFailedBoard(t *testing.T) {
 	}
 	h.key("enter")
 
-	if h.app.board != config.BoardTaskboard || h.app.boardErr != "" || strings.Contains(h.plainView(), "Couldn't load") {
+	if h.app.board != config.BoardTaskboard || h.app.failedBoard != nil || strings.Contains(h.plainView(), "Couldn't load") {
 		t.Errorf("did not leave the failed board:\n%s", h.plainView())
 	}
 }
@@ -67,7 +67,7 @@ func TestFailedBoardIgnoresKeysOfTheBoard(t *testing.T) {
 	h.key("s")
 	h.key("a")
 
-	if h.app.boardErr == "" || h.app.paletteOpen {
+	if h.app.failedBoard == nil || h.app.paletteOpen {
 		t.Errorf("state changed:\n%s", h.plainView())
 	}
 	h.key("q")
@@ -76,7 +76,7 @@ func TestFailedBoardIgnoresKeysOfTheBoard(t *testing.T) {
 func TestExpiredSessionOnBoardLoadShowsLoginNotError(t *testing.T) {
 	h := failedKanban(t, taiga.ErrSessionExpired)
 
-	if h.app.screen != screenLogin || h.app.boardErr != "" {
+	if h.app.screen != screenLogin || h.app.failedBoard != nil {
 		t.Errorf("screen %v:\n%s", h.app.screen, h.plainView())
 	}
 }
@@ -135,6 +135,10 @@ func TestFailedProjectSwitchKeepsPickerOpenWithErrorBelowAndEnterRetries(t *test
 			view := h.plainView()
 			if h.app.screen != screenPicker || !strings.Contains(view, "Couldn't load ") || !strings.Contains(view, "timed out") {
 				t.Fatalf("screen %v:\n%s", h.app.screen, view)
+			}
+			h.send(tea.WindowSizeMsg{Width: 80, Height: 20}) // anything but a key keeps the error
+			if !strings.Contains(h.plainView(), "timed out") {
+				t.Errorf("error gone before enter:\n%s", h.plainView())
 			}
 			h.key("enter")
 			if h.app.screen != screenBoard {
@@ -200,7 +204,29 @@ func TestFailedRefreshKeepsDataAndShowsRedErrorInStatusLine(t *testing.T) {
 	}
 	h.golden("kanban_refresh_failed")
 	h.key("j") // the data stays usable
-	if h.app.boardErr != "" {
+	if h.app.failedBoard != nil {
 		t.Error("refresh failure turned into a board error")
 	}
+}
+
+func TestTaskboardShowsUnknownStatusAndMemberAfterTheProjectReload(t *testing.T) {
+	api := newFake()
+	api.SetTasks(webShop.ID, append([]domain.Task{
+		{ID: 899, Ref: 99, Title: "Mystery task", Status: 299, UserStory: 501, Sprint: 304, Assignee: 99, TaskboardOrder: 0},
+	}, webShopTasks...)...)
+	h := onTaskboardWith(t, api, 100, 24)
+
+	if got := api.Calls("Project"); got != 2 {
+		t.Errorf("%d Project calls, want 2 (start and one reload)", got)
+	}
+	view := h.plainView()
+	if !strings.Contains(view, "Mystery task") {
+		t.Fatalf("view:\n%s", view)
+	}
+	h.key("down")
+	h.key("down")
+	if !strings.Contains(h.plainView(), "Unknown member") || !strings.Contains(h.plainView(), "Unknown status") {
+		t.Errorf("view:\n%s", h.plainView())
+	}
+	h.golden("taskboard_unknown_status_and_member")
 }

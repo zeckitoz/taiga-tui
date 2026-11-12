@@ -59,7 +59,12 @@ func (Save) isEffect() {}
 // ReloadProject is the effect of reloading the project data, because loaded
 // data refers to Statuses or Team Members the project does not know. Its
 // result goes back into ProjectReloaded.
-type ReloadProject struct{}
+type ReloadProject struct {
+	// ProjectID and Generation tell which load of which board asked, so that
+	// the result of a reload that a newer load made pointless is dropped.
+	ProjectID  int64
+	Generation int
+}
 
 func (ReloadProject) isEffect()   {}
 func (ReloadBoard) isEffect()     {}

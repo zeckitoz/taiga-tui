@@ -36,11 +36,9 @@ type Taskboard struct {
 func (t Taskboard) hasUnknownIDs() bool {
 	p := t.project
 	return slices.ContainsFunc(t.content.UserStories, func(s domain.UserStory) bool {
-		return !knowsUserStoryStatus(p, s.Status) || hasUnknownMember(p, s.Assignees)
+		return !p.KnowsUserStoryStatus(s.Status) || !p.KnowsMembers(s.Assignees)
 	}) || slices.ContainsFunc(t.content.Tasks, func(task domain.Task) bool {
-		knownStatus := slices.ContainsFunc(p.TaskStatuses, func(s domain.Status) bool { return s.ID == task.Status })
-		_, knownMember := p.Member(task.Assignee)
-		return !knownStatus || task.Assignee != 0 && !knownMember
+		return !p.KnowsTaskStatus(task.Status) || task.Assignee != 0 && !p.KnowsMembers([]int64{task.Assignee})
 	})
 }
 

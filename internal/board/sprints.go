@@ -24,10 +24,9 @@ type Sprints struct {
 	refreshingSprints, refreshingTaskboard bool
 	// mine is applied to every Taskboard shown, see WithMine.
 	mine bool
-	// projectReloaded tells that the project was reloaded for the current
-	// load of the Taskboard because of unknown IDs, which happens once per
-	// load.
-	projectReloaded bool
+	// reloadedFor is the load of the Taskboard for which the project was
+	// reloaded because of unknown IDs, which happens once per load.
+	reloadedFor int
 }
 
 // LoadSprints is the effect of loading the Sprints of a project. Its result
@@ -130,7 +129,6 @@ func (s Sprints) Open(sprint domain.Sprint) (Sprints, LoadTaskboard) {
 		s.taskboard = s.taskboard.DropSaves()
 	}
 	s.taskboardGen++
-	s.projectReloaded = false
 	refresh := s.hasTaskboard && s.taskboard.Sprint().ID == sprint.ID
 	s.refreshingTaskboard = refresh
 	return s, LoadTaskboard{
@@ -189,16 +187,25 @@ func (s Sprints) WithTaskboard(tb Taskboard) Sprints {
 // and none otherwise, or if it asked for the reload already since the last
 // load.
 func (s Sprints) ReloadProjectOnUnknown() (Sprints, Effect) {
-	if s.projectReloaded || !s.hasTaskboard || !s.taskboard.hasUnknownIDs() {
+	if s.reloadedFor == s.taskboardGen || !s.hasTaskboard || !s.taskboard.hasUnknownIDs() {
 		return s, nil
 	}
-	s.projectReloaded = true
-	return s, ReloadProject{}
+	s.reloadedFor = s.taskboardGen
+	return s, ReloadProject{ProjectID: s.project.ID, Generation: s.taskboardGen}
 }
 
-// ProjectReloaded takes the reloaded project, which the Taskboard shown and
-// those opened later follow.
-func (s Sprints) ProjectReloaded(p domain.Project) Sprints {
+// ProjectReloaded takes the project from the result of the reload that load
+// asked for, or returns false if the result no longer counts.
+func (s Sprints) ProjectReloaded(load ReloadProject, p domain.Project) (Sprints, bool) {
+	if s.project.ID == 0 || load.ProjectID != s.project.ID || load.Generation != s.taskboardGen {
+		return s, false
+	}
+	return s.WithProject(p), true
+}
+
+// WithProject takes the project, which the Taskboard shown and those opened
+// later follow.
+func (s Sprints) WithProject(p domain.Project) Sprints {
 	s.project = p
 	if s.hasTaskboard {
 		s.taskboard = s.taskboard.withProject(p)
