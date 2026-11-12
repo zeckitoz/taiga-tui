@@ -977,6 +977,7 @@ func (a App) updateTaskboard(key tea.KeyPressMsg) (App, tea.Cmd) {
 		}
 		return a, nil
 	}
+	before := tb
 	switch key.String() {
 	case "r":
 		a, sprints := a.loadSprints()
@@ -1001,9 +1002,27 @@ func (a App) updateTaskboard(key tea.KeyPressMsg) (App, tea.Cmd) {
 			tb = tb.Toggle()
 		}
 	}
+	switch key.String() {
+	case "left", "h", "right", "l", "enter":
+		a.detailOpen = detailAfterFold(before, tb, a.detailOpen)
+	}
 	a.sprints = a.sprints.WithTaskboard(tb)
 	a.scrollBoard()
 	return a.loadDetail()
+}
+
+// detailAfterFold returns whether the detail view is open after the
+// Taskboard went from before to after by a key that folds or unfolds, which
+// leaves the cursor on its row. Folding the Tasks of a User Story
+// hides the detail view and unfolding them shows it, and nothing else
+// changes it.
+func detailAfterFold(before, after board.Taskboard, open bool) bool {
+	was, ok := before.Expanded()
+	now, stillOK := after.Expanded()
+	if !ok || !stillOK || was == now {
+		return open
+	}
+	return now
 }
 
 // openPalette shows the command palette over the board and loads the

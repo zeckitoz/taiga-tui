@@ -328,6 +328,15 @@ func (t Taskboard) moveCursor(d int) Taskboard {
 	return t
 }
 
+// Expanded reports whether the Tasks of the selected User Story are shown.
+// It returns false for ok if no User Story row is selected.
+func (t Taskboard) Expanded() (expanded, ok bool) {
+	if t.SelectedIndex() < 0 || t.cursor.task {
+		return false, false
+	}
+	return !t.collapsed[t.cursor.id], true
+}
+
 // Left selects the User Story of the selected Task, or collapses the
 // selected User Story.
 func (t Taskboard) Left() Taskboard {
