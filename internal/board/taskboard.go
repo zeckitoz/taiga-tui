@@ -25,15 +25,20 @@ type Taskboard struct {
 	// group without User Story.
 	collapsed map[int64]bool
 	cursor    item
+	// mine shows only the work of the Team Member, see ToggleMine.
+	mine bool
 	// descriptions holds the descriptions by Task ID.
 	descriptions descriptions
 }
 
 // group is a User Story with its Tasks in Taskboard order. The group of
-// Tasks without User Story has the zero User Story.
+// Tasks without User Story has the zero User Story. tasks are the Tasks the
+// group shows, which are fewer than allTasks while only the Team Member's work
+// is shown.
 type group struct {
 	userStory domain.UserStory
 	tasks     []domain.Task
+	allTasks  []domain.Task
 }
 
 // item identifies a row that can be selected: a Task, or the User Story
@@ -127,8 +132,11 @@ func NewTaskboard(p domain.Project, sprint domain.Sprint, content domain.SprintC
 	return t
 }
 
-// regrouped groups the content with the Statuses being saved.
+// regrouped groups the content with the Statuses being saved. A selected row
+// that is no longer shown gives way to the next shown row, or else to the
+// previous one.
 func (t Taskboard) regrouped() Taskboard {
+	old := t.items()
 	c := domain.SprintContent{
 		UserStories: slices.Clone(t.content.UserStories),
 		Tasks:       slices.Clone(t.content.Tasks),
@@ -141,9 +149,70 @@ func (t Taskboard) regrouped() Taskboard {
 		c.Tasks[i].Status = t.saves.status(TaskItem, task.ID, task.Status)
 		c.Tasks[i].Assignee = t.saves.assignee(task.ID, task.Assignee)
 	}
-	t.groups = groupContent(c)
+	t.groups = t.filtered(groupContent(c))
+	return t.settled(old)
+}
+
+// filtered drops what only-mine hides: other people's Tasks, and the User
+// Stories left without Tasks of the Team Member unless they are assigned to
+// them.
+func (t Taskboard) filtered(groups []group) []group {
+	for i := range groups {
+		groups[i].allTasks = groups[i].tasks
+	}
+	if !t.mine {
+		return groups
+	}
+	var out []group
+	for _, g := range groups {
+		g.tasks = slices.DeleteFunc(slices.Clone(g.tasks), func(task domain.Task) bool { return task.Assignee != t.me })
+		if len(g.tasks) > 0 || g.userStory.ID != 0 && g.userStory.AssignedTo(t.me) {
+			out = append(out, g)
+		}
+	}
+	return out
+}
+
+// settled moves the cursor off a row of old that is no longer shown.
+func (t Taskboard) settled(old []itemRow) Taskboard {
+	selectable := func(rows []itemRow, r itemRow) bool {
+		return r.selectable() && slices.ContainsFunc(rows, func(n itemRow) bool { return n.selectable() && n.item == r.item })
+	}
+	at := slices.IndexFunc(old, func(r itemRow) bool { return r.selectable() && r.item == t.cursor })
+	rows := t.items()
+	if at < 0 || selectable(rows, old[at]) {
+		return t
+	}
+	for j := at + 1; j < len(old); j++ {
+		if selectable(rows, old[j]) {
+			t.cursor = old[j].item
+			return t
+		}
+	}
+	for j := at - 1; j >= 0; j-- {
+		if selectable(rows, old[j]) {
+			t.cursor = old[j].item
+			return t
+		}
+	}
+	t.cursor = item{}
 	return t
 }
+
+// ToggleMine switches between showing everything and only the work of the
+// Team Member: their Tasks, with the User Stories that have one or are
+// assigned to them. It is never persisted.
+func (t Taskboard) ToggleMine() Taskboard { return t.WithMine(!t.mine) }
+
+// WithMine shows only the work of the Team Member if mine is set, like
+// ToggleMine.
+func (t Taskboard) WithMine(mine bool) Taskboard {
+	t.mine = mine
+	return t.regrouped()
+}
+
+// Mine reports whether only the work of the Team Member is shown.
+func (t Taskboard) Mine() bool { return t.mine }
 
 func groupContent(c domain.SprintContent) []group {
 	userStories := slices.Clone(c.UserStories)
@@ -227,7 +296,7 @@ func (t Taskboard) items() []itemRow {
 		if t.collapsed[gr.userStory.ID] {
 			continue
 		}
-		if len(gr.tasks) == 0 {
+		if len(gr.allTasks) == 0 {
 			rows = append(rows, itemRow{kind: RowNoTasks, group: g})
 		}
 		for i, task := range gr.tasks {
@@ -260,7 +329,7 @@ func (t Taskboard) Rows() []TaskboardRow {
 				Ref:      gr.userStory.Ref,
 				Title:    gr.userStory.Title,
 				Expanded: !t.collapsed[gr.userStory.ID],
-				Tasks:    t.progress(gr.tasks),
+				Tasks:    t.progress(gr.allTasks),
 			}
 			if gr.userStory.ID != 0 {
 				rows[i].Status = statusByID(t.project.UserStoryStatuses, gr.userStory.Status)
@@ -387,8 +456,8 @@ func (t Taskboard) Detail() (TaskboardDetail, bool) {
 		ID:         gr.userStory.ID,
 		Ref:        gr.userStory.Ref,
 		Title:      gr.userStory.Title,
-		Tasks:      t.progress(gr.tasks),
-		TaskCounts: t.taskCounts(gr.tasks),
+		Tasks:      t.progress(gr.allTasks),
+		TaskCounts: t.taskCounts(gr.allTasks),
 	}
 	if gr.userStory.ID != 0 {
 		d.Status = statusByID(t.project.UserStoryStatuses, gr.userStory.Status)

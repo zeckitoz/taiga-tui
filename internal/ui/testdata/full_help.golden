@@ -17,8 +17,8 @@
  No description                                                                                     |
                                                                                                     |
                                                                                                     |
- ←/→ h/l   previous / next tab                r         refresh                                     |
- ↑/↓ j/k   move                               : ctrl+k  menu: boards, sprints, projects             |
- ↵ enter   show / hide detail                 ? esc     close help                                  |
- a         assign to me                       q ctrl+c  quit                                        |
- s         pick a status                                                                            |
+ ←/→ h/l   previous / next tab                m         show only my user stories / all             |
+ ↑/↓ j/k   move                               r         refresh                                     |
+ ↵ enter   show / hide detail                 : ctrl+k  menu: boards, sprints, projects             |
+ a         assign to me                       ? esc     close help                                  |
+ s         pick a status                      q ctrl+c  quit                                        |

@@ -27,6 +27,9 @@ const noUserStory = "Tasks without user story"
 // taskboardKeys returns the footer of the Taskboard for the selected row.
 func taskboardKeys(tb board.Taskboard) []string {
 	if tb.Empty() {
+		if tb.Mine() {
+			return []string{mineKey(true), "r refresh", ": menu", "? help"}
+		}
 		return []string{"r refresh", ": menu", "? help"}
 	}
 	enter := "↵ fold"
@@ -37,7 +40,7 @@ func taskboardKeys(tb board.Taskboard) []string {
 	if tb.StatusSelected() {
 		keys = append(keys, "a assign to me", "s status")
 	}
-	return append(keys, "r refresh", ": menu", "? help")
+	return append(keys, mineKey(tb.Mine()), "r refresh", ": menu", "? help")
 }
 
 // noSprintsKeys is the hint of a project without Sprints.
@@ -137,6 +140,9 @@ func taskboardLines(rows []board.TaskboardRow) ([]int, int) {
 // from line top and, if detail is set, the detail view. spin is the frame of
 // the spinner on rows that are saving.
 func renderTaskboard(tb board.Taskboard, top, w, h int, detail bool, spin string) string {
+	if tb.Empty() && tb.Mine() {
+		return nothingAssigned(w, h)
+	}
 	if tb.Empty() {
 		return centered(w, h,
 			faintStyle.Render("No user stories in "+plainText(tb.Sprint().Name)), "",

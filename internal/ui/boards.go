@@ -33,6 +33,12 @@ type boardView struct {
 	pickStatus    func(App, int64) (App, board.Effect, error)
 	// assignToMe makes the Team Member the Assignee of the selected row.
 	assignToMe func(App, board.ConfirmAssignToMe) (App, board.Effect, error)
+	// loaded tells that the board has its content, refreshing that it is
+	// reloading while it stays visible, and cancelLoads ends the loads on
+	// their way.
+	loaded      func(App) bool
+	refreshing  func(App) bool
+	cancelLoads func(App) App
 	// scroll keeps the selected row visible.
 	scroll func(*App)
 	// path is the header after the project name.
@@ -62,6 +68,17 @@ func boardOps(b config.Board) boardView {
 			dropSaves: func(a App) App {
 				return a.withTaskboard(board.Taskboard.DropSaves)
 			},
+			loaded: func(a App) bool {
+				_, ok := a.sprints.Taskboard()
+				return ok
+			},
+			refreshing: func(a App) bool { return a.sprints.Refreshing() },
+			cancelLoads: func(a App) App {
+				endLoad(&a.cancelSprints)
+				endLoad(&a.cancelTaskboard)
+				a.sprints = a.sprints.CancelLoads()
+				return a
+			},
 			scroll: (*App).scrollTaskboard,
 			path:   App.taskboardPath,
 			body:   App.taskboardBody,
@@ -83,6 +100,13 @@ func boardOps(b config.Board) boardView {
 		savedResult:   App.kanbanSaved,
 		dropSaves: func(a App) App {
 			a.kanban = a.kanban.DropSaves()
+			return a
+		},
+		loaded:     func(a App) bool { return a.kanban.Loaded() },
+		refreshing: func(a App) bool { return a.kanban.Refreshing() },
+		cancelLoads: func(a App) App {
+			endLoad(&a.cancelKanban)
+			a.kanban = a.kanban.CancelLoads()
 			return a
 		},
 		scroll: (*App).scrollKanban,

@@ -169,8 +169,10 @@ type App struct {
 	screen  screen
 	form    loginForm
 	spinner spinner
-	// saving turns on the rows whose Status Change is being saved.
+	// saving turns on the rows whose Status Change is being saved, and
+	// refresh the header while a board reloads.
 	saving        spinner
+	refresh       spinner
 	keyringIsSlow bool
 	status        []statusMsg
 	width, height int
@@ -216,6 +218,13 @@ type App struct {
 	pickedFor board.StatusOptions
 	// helpOpen expands the footer of the board into the full help.
 	helpOpen bool
+	// mine shows only the work of the Team Member on both boards. It is off at
+	// every start and never persisted.
+	mine bool
+	// cancelKanban, cancelSprints and cancelTaskboard end the requests of the
+	// loads on their way, once a newer load or leaving the board makes them
+	// pointless.
+	cancelKanban, cancelSprints, cancelTaskboard context.CancelFunc
 }
 
 // New returns the App. It starts by looking for a stored session.
@@ -231,6 +240,7 @@ func New(d Deps) App {
 		state:      d.InitialState,
 		spinner:    spinner{id: loadingSpinner, tick: d.Tick},
 		saving:     spinner{id: savingSpinner, tick: d.Tick},
+		refresh:    spinner{id: refreshSpinner, tick: d.Tick},
 		detailOpen: true,
 	}
 	a.me = domain.TeamMember{ID: a.state.UserID, Username: a.state.Username, FullName: a.state.FullName}
@@ -253,8 +263,8 @@ func (a App) Init() tea.Cmd {
 func (a App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	m, cmd := a.update(msg)
 	next := m.(App)
-	saving := next.syncSaving()
-	return next, tea.Batch(cmd, saving)
+	saving, refresh := next.syncSaving(), next.syncRefresh()
+	return next, tea.Batch(cmd, saving, refresh)
 }
 
 // syncSaving runs the spinner of the saving rows while a board saves.
@@ -269,11 +279,31 @@ func (a *App) syncSaving() tea.Cmd {
 	return nil
 }
 
+// syncRefresh runs the spinner of the header while the board shown reloads.
+func (a *App) syncRefresh() tea.Cmd {
+	switch busy := a.refreshing(); {
+	case busy && !a.refresh.active:
+		return a.refresh.start()
+	case !busy:
+		a.refresh.stop()
+	}
+	return nil
+}
+
+// refreshing reports whether the board shown is reloading while it stays
+// visible.
+func (a App) refreshing() bool {
+	return a.screen == screenBoard && a.shownBoard().refreshing(a)
+}
+
 func (a App) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case spinnerTickMsg:
-		if msg.id == savingSpinner {
+		switch msg.id {
+		case savingSpinner:
 			return a, a.saving.update(msg)
+		case refreshSpinner:
+			return a, a.refresh.update(msg)
 		}
 	case tea.WindowSizeMsg:
 		a.width, a.height = msg.Width, msg.Height
@@ -485,6 +515,25 @@ func (a App) failed(err error, what string, retry func(App) (App, tea.Cmd)) (tea
 	return a, nil
 }
 
+// newLoad ends the request of the load whose cancel function is *cancel, which
+// a newer load makes pointless, and returns the context of the newer one.
+func newLoad(cancel *context.CancelFunc) context.Context {
+	if *cancel != nil {
+		(*cancel)()
+	}
+	ctx, c := context.WithCancel(context.Background())
+	*cancel = c
+	return ctx
+}
+
+// endLoad ends the request of the load whose cancel function is *cancel.
+func endLoad(cancel *context.CancelFunc) {
+	if *cancel != nil {
+		(*cancel)()
+		*cancel = nil
+	}
+}
+
 // cannotReach introduces failures of the startup loads.
 func (a App) cannotReach() string { return "Cannot reach " + a.deps.Host }
 
@@ -562,6 +611,9 @@ const (
 func (a App) openProject(p domain.ProjectSummary, how opening) (App, tea.Cmd) {
 	a.project = domain.Project{ProjectSummary: p}
 	a.opened = how
+	for _, b := range allBoards {
+		a = boardOps(b).cancelLoads(a)
+	}
 	// Neither board takes results until the project loaded.
 	a.kanban, a.sprints = board.Kanban{}, board.Sprints{}
 	return a.loadProject(p.Slug)
@@ -577,8 +629,8 @@ func (a App) loadProject(slug string) (App, tea.Cmd) {
 
 func (a App) projectLoaded(p domain.Project) (App, tea.Cmd) {
 	a.project = p
-	a.kanban = board.UnloadedKanban(p, a.me.ID)
-	a.sprints = board.NewSprints(p, a.me.ID)
+	a.kanban = board.UnloadedKanban(p, a.me.ID).WithMine(a.mine)
+	a.sprints = board.NewSprints(p, a.me.ID).WithMine(a.mine)
 	if a.state.DefaultProject != p.ID {
 		a.state.DefaultProject = p.ID
 		a = a.saveState()
@@ -620,8 +672,10 @@ func (a App) openBoard(b config.Board) (App, tea.Cmd) {
 	a.sprintPickerBack = ""
 	if a.screen == screenBoard && a.board != b {
 		a.sprintPickerBack = a.board
-		// Results of saves on the board left no longer count.
+		// Results of saves on the board left no longer count, and neither do
+		// its loads.
 		a = boardOps(a.board).dropSaves(a)
+		a = boardOps(a.board).cancelLoads(a)
 	}
 	a.board = b
 	if a.state.LastBoard != b {
@@ -650,8 +704,9 @@ func (a App) loadSprints() (App, tea.Cmd) {
 	var load board.LoadSprints
 	a.sprints, load = a.sprints.LoadSprints()
 	api := a.deps.Taiga
+	ctx := newLoad(&a.cancelSprints)
 	cmd := func() tea.Msg {
-		sprints, err := api.Sprints(context.Background(), load.ProjectID)
+		sprints, err := api.Sprints(ctx, load.ProjectID)
 		return sprintsLoadedMsg{load: load, sprints: sprints, err: err}
 	}
 	if load.Refresh || a.board != config.BoardTaskboard {
@@ -669,6 +724,7 @@ func (a App) sprintsLoaded(msg sprintsLoadedMsg) (tea.Model, tea.Cmd) {
 	// Off the Taskboard the palette loaded the Sprints in the background.
 	background := a.board != config.BoardTaskboard
 	if msg.err != nil {
+		a.sprints, _ = a.sprints.SprintsFailed(msg.load)
 		if background && !errors.Is(msg.err, taiga.ErrSessionExpired) {
 			a = a.withoutTransient()
 			a.status = append(a.status, statusMsg{text: "Couldn't load sprints: " + reason(msg.err), isErr: true, transient: true})
@@ -767,8 +823,9 @@ func (a App) loadTaskboard(s domain.Sprint) (App, tea.Cmd) {
 	var load board.LoadTaskboard
 	a.sprints, load = a.sprints.Open(s)
 	api := a.deps.Taiga
+	ctx := newLoad(&a.cancelTaskboard)
 	cmd := func() tea.Msg {
-		c, err := api.Taskboard(context.Background(), load.ProjectID, load.Sprint.ID)
+		c, err := api.Taskboard(ctx, load.ProjectID, load.Sprint.ID)
 		return taskboardLoadedMsg{load: load, content: c, err: err}
 	}
 	if load.Refresh {
@@ -783,6 +840,7 @@ func (a App) taskboardLoaded(msg taskboardLoadedMsg) (tea.Model, tea.Cmd) {
 		return a, nil
 	}
 	if msg.err != nil {
+		a.sprints, _ = a.sprints.TaskboardFailed(msg.load)
 		if msg.load.Refresh && !errors.Is(msg.err, taiga.ErrSessionExpired) {
 			return a.refreshFailed(msg.err), nil
 		}
@@ -820,8 +878,9 @@ func (a App) loadKanban() (App, tea.Cmd) {
 	var load board.LoadKanban
 	a.kanban, load = a.kanban.LoadUserStories()
 	api := a.deps.Taiga
+	ctx := newLoad(&a.cancelKanban)
 	cmd := func() tea.Msg {
-		stories, err := api.Kanban(context.Background(), load.ProjectID)
+		stories, err := api.Kanban(ctx, load.ProjectID)
 		return kanbanLoadedMsg{load: load, stories: stories, err: err}
 	}
 	if load.Refresh {
@@ -836,6 +895,7 @@ func (a App) kanbanLoaded(msg kanbanLoadedMsg) (tea.Model, tea.Cmd) {
 		return a, nil
 	}
 	if msg.err != nil {
+		a.kanban, _ = a.kanban.UserStoriesFailed(msg.load)
 		if msg.load.Refresh && !errors.Is(msg.err, taiga.ErrSessionExpired) {
 			return a.refreshFailed(msg.err), nil
 		}
@@ -937,6 +997,8 @@ func (a App) updateBoard(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a.openStatusPalette(), nil
 	case "a":
 		return a.assignToMe(board.ConfirmAssignToMe{})
+	case "m":
+		return a.toggleMine()
 	case "?":
 		a.helpOpen = !a.helpOpen
 		a.scrollBoard()
@@ -949,6 +1011,19 @@ func (a App) updateBoard(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 	}
 	return a.shownBoard().update(a, key)
+}
+
+// toggleMine switches both boards between everything and only the work of
+// the Team Member. It does nothing before a board has loaded.
+func (a App) toggleMine() (App, tea.Cmd) {
+	if !a.shownBoard().loaded(a) {
+		return a, nil
+	}
+	a.mine = !a.mine
+	a.kanban = a.kanban.WithMine(a.mine)
+	a.sprints = a.sprints.WithMine(a.mine)
+	a.scrollBoard()
+	return a.loadDetail()
 }
 
 func (a App) updateKanban(key tea.KeyPressMsg) (App, tea.Cmd) {
@@ -1222,7 +1297,7 @@ func (a App) plain() string {
 
 // framed renders header, body, status line and footer.
 func (a App) framed(path, body string) string {
-	header := spread(" "+path, a.me.FullName+" ", a.width)
+	header := spread(" "+path, a.headerRight(), a.width)
 	lines := []string{header, body}
 	lines = append(lines, a.statusLines(1)...)
 	lines = append(lines, a.footerLines()...)
@@ -1246,6 +1321,22 @@ func (a App) pickerFooter() string {
 	return footer(pickerKeys, a.width)
 }
 
+// headerRight is the right end of the header: the spinner of a reload, the
+// filter, and the name of the Team Member.
+func (a App) headerRight() string {
+	right := a.me.FullName + " "
+	if a.screen != screenBoard {
+		return right
+	}
+	if a.mine {
+		right = mineStyle.Render("mine") + "  " + right
+	}
+	if a.refreshing() {
+		right = a.refresh.view() + " " + right
+	}
+	return right
+}
+
 // boardPath is the header of the board screen.
 func (a App) boardPath() string {
 	return projectStyle.Render(a.project.Name) + pathSep + a.shownBoard().path(a)
@@ -1262,7 +1353,7 @@ func (a App) taskboardPath() string {
 	full := path + sprintPath(tb.Sprint(), a.today(), true)
 	// Leave out the date range rather than the Team Member's name.
 	head := projectStyle.Render(a.project.Name) + pathSep + full
-	if lipgloss.Width(head)+lipgloss.Width(a.me.FullName)+3 <= a.width {
+	if lipgloss.Width(head)+lipgloss.Width(a.headerRight())+2 <= a.width {
 		return full
 	}
 	return path + sprintPath(tb.Sprint(), a.today(), false)

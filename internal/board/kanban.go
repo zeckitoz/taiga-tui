@@ -34,6 +34,10 @@ type Kanban struct {
 	// loads of the User Stories, of which only the latest counts.
 	loaded  bool
 	loadGen int
+	// mine shows only the User Stories of the Team Member, see ToggleMine.
+	mine bool
+	// refreshing tells that a reload of the shown board is on its way.
+	refreshing bool
 }
 
 // LoadKanban is the effect of loading the User Stories of a Kanban Board.
@@ -105,6 +109,7 @@ func (k Kanban) Loaded() bool { return k.loaded }
 // LoadUserStories returns the effect of loading the User Stories.
 func (k Kanban) LoadUserStories() (Kanban, LoadKanban) {
 	k.loadGen++
+	k.refreshing = k.loaded
 	return k, LoadKanban{ProjectID: k.project.ID, Generation: k.loadGen, Refresh: k.loaded}
 }
 
@@ -120,6 +125,7 @@ func (k Kanban) UserStoriesLoaded(load LoadKanban, stories []domain.UserStory) (
 	if !k.UserStoriesCurrent(load) {
 		return k, false
 	}
+	k.refreshing = false
 	if k.loaded {
 		return k.Reload(stories), true
 	}
@@ -127,12 +133,59 @@ func (k Kanban) UserStoriesLoaded(load LoadKanban, stories []domain.UserStory) (
 	return k.withStories(stories), true
 }
 
+// UserStoriesFailed ends the load that failed, or returns false if the
+// failure no longer counts.
+func (k Kanban) UserStoriesFailed(load LoadKanban) (Kanban, bool) {
+	if !k.UserStoriesCurrent(load) {
+		return k, false
+	}
+	k.refreshing = false
+	return k, true
+}
+
+// Refreshing reports whether the shown board is being reloaded while it
+// stays visible.
+func (k Kanban) Refreshing() bool { return k.refreshing }
+
+// CancelLoads drops the load on its way: its result no longer counts.
+func (k Kanban) CancelLoads() Kanban {
+	k.loadGen++
+	k.refreshing = false
+	return k
+}
+
+// ToggleMine switches between showing every User Story and only those
+// assigned to the Team Member. The tabs stay, with their counts filtered. It
+// is never persisted.
+func (k Kanban) ToggleMine() Kanban { return k.WithMine(!k.mine) }
+
+// WithMine shows only the User Stories of the Team Member if mine is set,
+// like ToggleMine.
+func (k Kanban) WithMine(mine bool) Kanban {
+	k.mine = mine
+	return k.regrouped()
+}
+
+// Mine reports whether only the User Stories of the Team Member are shown.
+func (k Kanban) Mine() bool { return k.mine }
+
 // Reload replaces the User Stories, keeping the active tab and the selected
-// User Story if it is still in that tab. Descriptions count as outdated:
-// they stay visible until LoadDetail has loaded them again.
+// User Story, which the board follows into another tab if it moved there, or
+// else selecting its neighbor. Descriptions count as outdated: they stay
+// visible until LoadDetail has loaded them again.
 func (k Kanban) Reload(stories []domain.UserStory) Kanban {
 	k.descriptions = k.descriptions.reloaded()
-	return k.withStories(stories)
+	sel, ok := k.selected()
+	k = k.withStories(stories)
+	if !ok || slices.ContainsFunc(k.active(), func(s domain.UserStory) bool { return s.ID == sel.ID }) {
+		return k
+	}
+	for id, list := range k.byStatus {
+		if slices.ContainsFunc(list, func(s domain.UserStory) bool { return s.ID == sel.ID }) {
+			return k.follow(sel.ID, id)
+		}
+	}
+	return k
 }
 
 func (k Kanban) withStories(stories []domain.UserStory) Kanban {
@@ -140,23 +193,58 @@ func (k Kanban) withStories(stories []domain.UserStory) Kanban {
 	return k.regrouped()
 }
 
-// regrouped groups the User Stories by the Status they show and forgets the
-// selection of a Status whose selected User Story left it.
+// regrouped groups the User Stories by the Status they show. In a Status
+// whose selected User Story left it, the next User Story is selected, or else
+// the previous one.
 func (k Kanban) regrouped() Kanban {
+	old := k.byStatus
 	k.cursor = maps.Clone(k.cursor) // never share the map with the receiver
 	k.byStatus = map[int64][]domain.UserStory{}
 	for _, s := range k.stories {
 		s.Status = k.saves.status(UserStoryItem, s.ID, s.Status)
 		s.Assignees = k.saves.assignees(s.ID, s.Assignees)
+		if k.mine && !s.AssignedTo(k.me) {
+			continue
+		}
 		k.byStatus[s.Status] = append(k.byStatus[s.Status], s)
 	}
-	for id, list := range k.byStatus {
+	for _, list := range k.byStatus {
 		slices.SortStableFunc(list, func(a, b domain.UserStory) int { return cmp.Compare(a.KanbanOrder, b.KanbanOrder) })
-		if sel, ok := k.cursor[id]; ok && !slices.ContainsFunc(list, func(s domain.UserStory) bool { return s.ID == sel }) {
-			delete(k.cursor, id)
+	}
+	for id, sel := range k.cursor {
+		if containsID(k.byStatus[id], sel) {
+			continue
+		}
+		delete(k.cursor, id)
+		if next, ok := neighbor(old[id], sel, k.byStatus[id]); ok {
+			k.cursor[id] = next
 		}
 	}
 	return k
+}
+
+func containsID(list []domain.UserStory, id int64) bool {
+	return slices.ContainsFunc(list, func(s domain.UserStory) bool { return s.ID == id })
+}
+
+// neighbor returns the ID of the User Story nearest to the one with ID
+// gone in old that is in list, looking forward first.
+func neighbor(old []domain.UserStory, gone int64, list []domain.UserStory) (int64, bool) {
+	at := slices.IndexFunc(old, func(s domain.UserStory) bool { return s.ID == gone })
+	if at < 0 {
+		return 0, false
+	}
+	for j := at + 1; j < len(old); j++ {
+		if containsID(list, old[j].ID) {
+			return old[j].ID, true
+		}
+	}
+	for j := at - 1; j >= 0; j-- {
+		if containsID(list, old[j].ID) {
+			return old[j].ID, true
+		}
+	}
+	return 0, false
 }
 
 // Tabs returns the Status tabs in Taiga order.

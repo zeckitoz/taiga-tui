@@ -1,0 +1,24 @@
+ Web Shop › Kanban Board                                                        mine  Alice Example |
+ ● New 1 │ ● Ready 0 │ ● In progress 1/3 │ ● Ready for test 0 │ ● Done 0                            |
+────────────────────────────────────────────────────────────────────────────────────────────────────|
+ ▍ #12 Checkout with credit card                                                      BK AE  ▰▱ 1/2 |
+                                                                                                    |
+                                                                                                    |
+                                                                                                    |
+                                                                                                    |
+                                                                                                    |
+                                                                                                    |
+                                                                                                    |
+                                                                                                    |
+                                                                                                    |
+────────────────────────────────────────────────────────────────────────────────────────────────────|
+ #12 Checkout with credit card                                                                      |
+ Status     ● New                                                                                   |
+ Assignees  Bea Koch, Alice Example (you)                                                           |
+ Sprint     Sprint 4                                                                                |
+ Tasks      ▰▱ 1/2                                                                                  |
+                                                                                                    |
+ Customers pay with Visa or Mastercard at the end of the checkout.                                  |
+                                                                                                    |
+ - 3-D Secure is required …                                                                         |
+ ←/→ tab · ↑/↓ move · ↵ detail · a assign to me · s status · m show all · : menu · ? help           |

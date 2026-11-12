@@ -27,7 +27,25 @@ func kanbanKeys(k board.Kanban) []string {
 	if k.SelectedIndex() >= 0 {
 		keys = append(keys, "a assign to me", "s status")
 	}
+	if !k.Empty() || k.Mine() {
+		keys = append(keys, mineKey(k.Mine()))
+	}
 	return append(keys, "r refresh", ": menu", "? help")
+}
+
+// mineKey is the footer entry of the only-mine filter, which offers the
+// opposite of what is shown.
+func mineKey(on bool) string {
+	if on {
+		return "m show all"
+	}
+	return "m mine"
+}
+
+// nothingAssigned is the hint of a board that the only-mine filter left
+// empty.
+func nothingAssigned(w, h int) string {
+	return centered(w, h, faintStyle.Render("Nothing assigned to you"), "", faintStyle.Render("m show all"))
 }
 
 // Placement of the detail view: right of the list from detailRightFrom
@@ -74,6 +92,9 @@ func layoutBoard(w, h int, detail bool) boardLayout {
 func renderKanban(k board.Kanban, top, w, h int, detail bool, spin string) string {
 	tabs := k.Tabs()
 	head := []string{tabBar(tabs, w), rule(w)}
+	if k.Empty() && k.Mine() {
+		return strings.Join(append(head, nothingAssigned(w, h-kanbanChromeLines)), "\n")
+	}
 	if k.Empty() {
 		body := centered(w, h-kanbanChromeLines, faintStyle.Render("No user stories on the Kanban Board"), "", faintStyle.Render("r refresh"))
 		return strings.Join(append(head, body), "\n")
