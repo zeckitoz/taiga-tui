@@ -136,11 +136,11 @@ type (
 		task domain.Task
 		err  error
 	}
-	// statusSavedMsg is the result of a save on the board on: the Task or
+	// savedMsg is the result of a save on the board on: the Task or
 	// User Story as Taiga saved it, or the error.
-	statusSavedMsg struct {
+	savedMsg struct {
 		on    config.Board
-		save  board.SaveStatus
+		save  board.Save
 		task  domain.Task
 		story domain.UserStory
 		err   error
@@ -210,6 +210,8 @@ type App struct {
 	// paletteStatus tells that the palette lists the Statuses of the
 	// selected row instead of the places to go to.
 	paletteStatus bool
+	// asked is the question of a Take Over waiting for its answer.
+	asked *board.ConfirmTakeOver
 	// pickedFor is the row the Status palette was opened for.
 	pickedFor board.StatusOptions
 	// helpOpen expands the footer of the board into the full help.
@@ -361,8 +363,8 @@ func (a App) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			return tb.TaskLoaded(msg.load, msg.task)
 		}), nil
-	case statusSavedMsg:
-		return a.statusSaved(msg)
+	case savedMsg:
+		return a.savedResult(msg)
 	case userStoryReloadedMsg:
 		if msg.err != nil {
 			return a, nil // the next refresh corrects the User Story
@@ -415,6 +417,7 @@ func (a App) withoutTransient() App {
 }
 
 func (a App) showLogin() App {
+	a.asked = nil // no question waits across a login
 	a.screen = screenLogin
 	a.form = newLoginForm(a.deps.Host, a.state.Login, a.deps.Tick)
 	a.form.setWidth(a.width)
@@ -922,6 +925,9 @@ func (a App) updateBoard(msg tea.Msg) (tea.Model, tea.Cmd) {
 	if !ok {
 		return a, nil
 	}
+	if a.asked != nil {
+		return a.answerTakeOver(key)
+	}
 	switch key.String() {
 	case "q":
 		return a, tea.Quit
@@ -929,6 +935,8 @@ func (a App) updateBoard(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a.openPalette()
 	case "s":
 		return a.openStatusPalette(), nil
+	case "t":
+		return a.takeOver(board.ConfirmTakeOver{})
 	case "?":
 		a.helpOpen = !a.helpOpen
 		a.scrollBoard()

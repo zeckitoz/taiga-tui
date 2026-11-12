@@ -643,6 +643,27 @@ func TestPatchUserStorySendsOnlyStatusAndVersion(t *testing.T) {
 	}
 }
 
+func TestPatchTaskTakeOverSendsOnlyAssigneeAndVersion(t *testing.T) {
+	srv := newPatchServer(t, "/api/v1/tasks/9891", "task.json")
+
+	_, err := taiga.NewClient(srv.URL, staticToken("t")).PatchTask(t.Context(), 9891, 3, domain.TaskPatch{Assignee: 42})
+
+	if err != nil || srv.body != `{"assigned_to":42,"version":3}` {
+		t.Errorf("body %s, %v", srv.body, err)
+	}
+}
+
+func TestPatchUserStoryTakeOverSendsMainAssigneeAndAllAssignees(t *testing.T) {
+	srv := newPatchServer(t, "/api/v1/userstories/10213", "userstory.json")
+	patch := domain.UserStoryPatch{Assignee: 42, Assignees: []int64{42, 43}}
+
+	_, err := taiga.NewClient(srv.URL, staticToken("t")).PatchUserStory(t.Context(), 10213, 7, patch)
+
+	if err != nil || srv.body != `{"assigned_to":42,"assigned_users":[42,43],"version":7}` {
+		t.Errorf("body %s, %v", srv.body, err)
+	}
+}
+
 func TestPatchReportsVersionConflict(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusBadRequest)

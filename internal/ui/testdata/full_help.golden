@@ -17,8 +17,8 @@
  No description                                                                                     |
                                                                                                     |
                                                                                                     |
- ⇧←/→ H/L  change to previous / next status    r         refresh                                    |
- s         pick a status                       : ctrl+k  menu: boards, sprints, projects            |
+ ⇧←/→ H/L  change to previous / next status    enter     show / hide detail                         |
+ s         pick a status                       r         refresh                                    |
+ t         take over: make me the assignee     : ctrl+k  menu: boards, sprints, projects            |
  ←/→ h/l   previous / next tab                 ? esc     close help                                 |
  ↑/↓ j/k   move                                q ctrl+c  quit                                       |
- enter     show / hide detail                                                                       |

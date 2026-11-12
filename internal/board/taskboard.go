@@ -135,9 +135,11 @@ func (t Taskboard) regrouped() Taskboard {
 	}
 	for i, s := range c.UserStories {
 		c.UserStories[i].Status = t.saves.status(UserStoryItem, s.ID, s.Status)
+		c.UserStories[i].Assignees = t.saves.assignees(s.ID, s.Assignees)
 	}
 	for i, task := range c.Tasks {
 		c.Tasks[i].Status = t.saves.status(TaskItem, task.ID, task.Status)
+		c.Tasks[i].Assignee = t.saves.assignee(task.ID, task.Assignee)
 	}
 	t.groups = groupContent(c)
 	return t
@@ -483,10 +485,14 @@ func (t Taskboard) selectedItem() (workItem, bool) {
 	switch {
 	case r.kind == RowTask:
 		task := gr.tasks[r.task]
-		return workItem{kind: TaskItem, id: task.ID, ref: task.Ref, status: task.Status, version: task.Version}, true
+		w := workItem{kind: TaskItem, id: task.ID, ref: task.Ref, status: task.Status, version: task.Version}
+		if task.Assignee != 0 {
+			w.assignees = []int64{task.Assignee}
+		}
+		return w, true
 	case gr.userStory.ID != 0:
 		us := gr.userStory
-		return workItem{kind: UserStoryItem, id: us.ID, ref: us.Ref, status: us.Status, version: us.Version}, true
+		return workItem{kind: UserStoryItem, id: us.ID, ref: us.Ref, status: us.Status, version: us.Version, assignees: us.Assignees}, true
 	}
 	return workItem{}, false // the group of Tasks without User Story
 }
@@ -510,6 +516,30 @@ func (t Taskboard) ChangeStatus(d Direction, sent Sent) (Taskboard, Effect, erro
 // Status of its kind with the given ID, which may be any one.
 func (t Taskboard) PickStatus(id int64, sent Sent) (Taskboard, Effect, error) {
 	return t.change(toStatus(id), sent)
+}
+
+// TakeOver makes the Team Member the Assignee of the selected Task or User
+// Story right away, keeping the other Assignees of a User Story, and
+// returns the effect of saving the change, which the App records in sent
+// once it sends it. If that replaces the Assignee of a Task, it returns the
+// effect ConfirmTakeOver instead, to be answered by calling it again with
+// it as confirmed; confirmed is the zero value otherwise. It returns a
+// Rejection if the change cannot be made, and no effect if no item is
+// selected.
+func (t Taskboard) TakeOver(sent Sent, confirmed ConfirmTakeOver) (Taskboard, Effect, error) {
+	it, ok := t.selectedItem()
+	if !ok {
+		return t, nil, nil
+	}
+	sv, eff, err := t.saves.takeOver(t.project, t.me, sent, it, confirmed)
+	if err != nil {
+		return t, nil, err
+	}
+	if _, saving := eff.(Save); !saving {
+		return t, eff, nil
+	}
+	t.saves = sv
+	return t.regrouped(), eff, nil
 }
 
 // StatusOptions returns the Statuses the selected row can be changed to, or
@@ -538,17 +568,17 @@ func (t Taskboard) change(to target, sent Sent) (Taskboard, Effect, error) {
 	return t.regrouped(), save, nil
 }
 
-// TaskSaved takes the Task as Taiga saved it from the result of save and
-// returns the effect of reloading its User Story, whose closed state and
-// progress may have changed with it. It returns false if the result no
-// longer counts.
-func (t Taskboard) TaskSaved(save SaveStatus, saved domain.Task) (Taskboard, Effect, bool) {
+// TaskSaved takes the Task as Taiga saved it from the result of save and,
+// after a Status Change, returns the effect of reloading its User Story,
+// whose closed state and progress may have changed with it. It returns
+// false if the result no longer counts.
+func (t Taskboard) TaskSaved(save Save, saved domain.Task) (Taskboard, Effect, bool) {
 	var ok bool
 	if t.saves, ok = t.saves.end(save); !ok {
 		return t, nil, false
 	}
 	t = t.ReplaceTask(saved)
-	if saved.UserStory == 0 || !slices.ContainsFunc(t.content.UserStories, func(s domain.UserStory) bool { return s.ID == saved.UserStory }) {
+	if save.Status == 0 || saved.UserStory == 0 || !slices.ContainsFunc(t.content.UserStories, func(s domain.UserStory) bool { return s.ID == saved.UserStory }) {
 		return t, nil, true
 	}
 	return t, ReloadUserStory{ID: saved.UserStory, Sprint: t.sprint.ID}, true
@@ -556,7 +586,7 @@ func (t Taskboard) TaskSaved(save SaveStatus, saved domain.Task) (Taskboard, Eff
 
 // UserStorySaved takes the User Story as Taiga saved it from the result of
 // save, or returns false if the result no longer counts.
-func (t Taskboard) UserStorySaved(save SaveStatus, saved domain.UserStory) (Taskboard, bool) {
+func (t Taskboard) UserStorySaved(save Save, saved domain.UserStory) (Taskboard, bool) {
 	var ok bool
 	if t.saves, ok = t.saves.end(save); !ok {
 		return t, false
@@ -581,10 +611,10 @@ func (t Taskboard) ReplaceUserStory(saved domain.UserStory) Taskboard {
 	return t.withUserStory(saved).regrouped()
 }
 
-// StatusNotSaved undoes the change of save and returns the effect of
+// NotSaved undoes the change of save and returns the effect of
 // reloading the board if the failure asks for it. It returns false if the
 // result no longer counts.
-func (t Taskboard) StatusNotSaved(save SaveStatus, f SaveFailure) (Taskboard, Effect, bool) {
+func (t Taskboard) NotSaved(save Save, f SaveFailure) (Taskboard, Effect, bool) {
 	var ok bool
 	if t.saves, ok = t.saves.end(save); !ok {
 		return t, nil, false

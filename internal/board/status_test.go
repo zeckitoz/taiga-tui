@@ -14,10 +14,10 @@ var nothingSent = board.Sent{}
 
 // changeKanban moves the selected User Story to the next Status and fails
 // the test unless it asks to save it.
-func changeKanban(t *testing.T, k board.Kanban) (board.Kanban, board.SaveStatus) {
+func changeKanban(t *testing.T, k board.Kanban) (board.Kanban, board.Save) {
 	t.Helper()
 	k, eff, err := k.ChangeStatus(board.Next, nothingSent)
-	save, ok := eff.(board.SaveStatus)
+	save, ok := eff.(board.Save)
 	if err != nil || !ok {
 		t.Fatalf("ChangeStatus: effect %#v, error %v", eff, err)
 	}
@@ -71,7 +71,7 @@ func TestKanbanStatusChangeSkipsArchivedStatusesAndStopsAtEdges(t *testing.T) {
 	if save.Status != 4 {
 		t.Errorf("saves Status %d, want Done after the archived Old", save.Status)
 	}
-	k, _ = k.StatusSaved(save, domain.UserStory{ID: 13, Ref: 4, Title: "Working", Status: 4, Version: 1})
+	k, _ = k.Saved(save, domain.UserStory{ID: 13, Ref: 4, Title: "Working", Status: 4, Version: 1})
 	if _, _, err := k.ChangeStatus(board.Next, nothingSent); !errors.Is(err, board.ErrLastStatus) || err.Error() != "Already in last status" {
 		t.Errorf("last status: %v", err)
 	}
@@ -104,7 +104,7 @@ func TestKanbanRejectsChangesWithoutPermission(t *testing.T) {
 func TestKanbanTakesSavedUserStoryAndUnlocksIt(t *testing.T) {
 	k, save := changeKanban(t, board.NewKanban(project, stories, me))
 
-	k, ok := k.StatusSaved(save, domain.UserStory{ID: 11, Ref: 2, Title: "First (saved)", Status: 2, Version: 1, KanbanOrder: 10})
+	k, ok := k.Saved(save, domain.UserStory{ID: 11, Ref: 2, Title: "First (saved)", Status: 2, Version: 1, KanbanOrder: 10})
 
 	if !ok {
 		t.Fatal("result dropped")
@@ -129,7 +129,7 @@ func TestKanbanUndoesChangeThatWasNotSaved(t *testing.T) {
 	} {
 		k, save := changeKanban(t, board.NewKanban(project, stories, me))
 
-		k, eff, ok := k.StatusNotSaved(save, tt.failure)
+		k, eff, ok := k.NotSaved(save, tt.failure)
 
 		if !ok {
 			t.Fatalf("%v: result dropped", tt.failure)
@@ -157,7 +157,7 @@ func TestKanbanKeepsChangeThatIsSavingAcrossReload(t *testing.T) {
 	if r := selectedRow(k); r.ID != 11 || !r.Saving || k.ActiveStatus().Name != "In progress" {
 		t.Errorf("selected %+v in %q", r, k.ActiveStatus().Name)
 	}
-	if _, ok := k.StatusSaved(save, domain.UserStory{ID: 11, Status: 2, Version: 1}); !ok {
+	if _, ok := k.Saved(save, domain.UserStory{ID: 11, Status: 2, Version: 1}); !ok {
 		t.Error("result dropped after reload")
 	}
 }
@@ -170,10 +170,10 @@ func TestKanbanIgnoresResultsOfDroppedSaves(t *testing.T) {
 	if k.Saving() {
 		t.Error("still saving")
 	}
-	if _, ok := k.StatusSaved(save, domain.UserStory{ID: 11, Status: 2, Version: 1}); ok {
+	if _, ok := k.Saved(save, domain.UserStory{ID: 11, Status: 2, Version: 1}); ok {
 		t.Error("took a saved result")
 	}
-	if _, eff, ok := k.StatusNotSaved(save, board.SaveConflict); ok || eff != nil {
+	if _, eff, ok := k.NotSaved(save, board.SaveConflict); ok || eff != nil {
 		t.Error("took a failed result")
 	}
 }
@@ -182,7 +182,7 @@ func TestKanbanStatusChangeNeverChangesTheReceiver(t *testing.T) {
 	k := board.NewKanban(project, stories, me)
 
 	changed, save := changeKanban(t, k)
-	_, _ = changed.StatusSaved(save, domain.UserStory{ID: 11, Status: 2})
+	_, _ = changed.Saved(save, domain.UserStory{ID: 11, Status: 2})
 
 	if k.ActiveStatus().Name != "New" || selectedRow(k).Saving || k.Saving() || !changed.Saving() {
 		t.Error("receiver changed")
@@ -199,10 +199,10 @@ func TestKanbanStatusChangeOnEmptyTabDoesNothing(t *testing.T) {
 
 // changeTaskboard changes the Status of the selected row and fails the test
 // unless it asks to save it.
-func changeTaskboard(t *testing.T, tb board.Taskboard, d board.Direction) (board.Taskboard, board.SaveStatus) {
+func changeTaskboard(t *testing.T, tb board.Taskboard, d board.Direction) (board.Taskboard, board.Save) {
 	t.Helper()
 	tb, eff, err := tb.ChangeStatus(d, nothingSent)
-	save, ok := eff.(board.SaveStatus)
+	save, ok := eff.(board.Save)
 	if err != nil || !ok {
 		t.Fatalf("ChangeStatus: effect %#v, error %v", eff, err)
 	}
@@ -307,7 +307,7 @@ func TestTaskboardSavedTaskWithoutUserStoryInSprintReloadsNothing(t *testing.T) 
 func TestTaskboardUndoesChangeThatWasNotSaved(t *testing.T) {
 	tb, save := changeTaskboard(t, press(newTaskboard(), down, down, down, down), board.Next)
 
-	tb, eff, ok := tb.StatusNotSaved(save, board.SaveConflict)
+	tb, eff, ok := tb.NotSaved(save, board.SaveConflict)
 
 	if _, reload := eff.(board.ReloadBoard); !ok || !reload {
 		t.Errorf("ok %v, effect %#v", ok, eff)
@@ -357,7 +357,7 @@ func TestItemStaysLockedUntilItsSaveIsAnsweredEvenAfterLeavingTheBoard(t *testin
 
 	sent = sent.Answered(save)
 	_, eff, err := tb.ChangeStatus(board.Next, sent)
-	again, ok := eff.(board.SaveStatus)
+	again, ok := eff.(board.Save)
 	if err != nil || !ok {
 		t.Fatalf("after the answer: %#v, %v", eff, err)
 	}
@@ -367,8 +367,8 @@ func TestItemStaysLockedUntilItsSaveIsAnsweredEvenAfterLeavingTheBoard(t *testin
 }
 
 func TestAnswerOfAnEarlierSaveKeepsTheLaterOneLocked(t *testing.T) {
-	first := board.SaveStatus{Kind: board.UserStoryItem, ID: 11, Generation: 1}
-	later := board.SaveStatus{Kind: board.UserStoryItem, ID: 11, Generation: 2}
+	first := board.Save{Kind: board.UserStoryItem, ID: 11, Generation: 1}
+	later := board.Save{Kind: board.UserStoryItem, ID: 11, Generation: 2}
 	sent := nothingSent.Add(first).Answered(first).Add(later)
 
 	sent = sent.Answered(first)
@@ -406,7 +406,7 @@ func TestTaskboardUserStoryRowRevertsStatusWhenSaveFails(t *testing.T) {
 	tb := press(newTaskboard(), down, down) // US#12, In progress
 	tb, save := changeTaskboard(t, tb, board.Next)
 
-	tb, _, ok := tb.StatusNotSaved(save, board.SaveFailed)
+	tb, _, ok := tb.NotSaved(save, board.SaveFailed)
 
 	if row := tb.Rows()[2]; !ok || row.Saving || row.Status.Name != "In progress" {
 		t.Errorf("row %+v", row)
@@ -435,7 +435,7 @@ func TestKanbanMovesToAnyStatusAndSavesIt(t *testing.T) {
 
 	k, eff, err := k.PickStatus(4, nothingSent)
 
-	save, ok := eff.(board.SaveStatus)
+	save, ok := eff.(board.Save)
 	if err != nil || !ok {
 		t.Fatalf("effect %#v, error %v", eff, err)
 	}
@@ -502,7 +502,7 @@ func TestTaskboardOffersTheStatusesOfTheKindOfTheSelectedRow(t *testing.T) {
 		t.Errorf("task statuses %d, story statuses %d", len(taskOpts.Statuses), len(storyOpts.Statuses))
 	}
 	_, eff, err := task.PickStatus(scrum.TaskStatuses[len(scrum.TaskStatuses)-1].ID, nothingSent)
-	if save, ok := eff.(board.SaveStatus); err != nil || !ok || save.Kind != board.TaskItem {
+	if save, ok := eff.(board.Save); err != nil || !ok || save.Kind != board.TaskItem {
 		t.Errorf("effect %#v, error %v", eff, err)
 	}
 }

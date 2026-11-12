@@ -367,18 +367,20 @@ func (c *Client) Task(ctx context.Context, id int64) (domain.Task, error) {
 	return d.domain(), nil
 }
 
-// statusPatchDTO changes the Status of a Task or User Story. Taiga rejects
-// it with a conflict if version is not the current one.
-type statusPatchDTO struct {
-	Status  int64 `json:"status"`
-	Version int   `json:"version"`
+// patchDTO changes a Task or User Story, sending only the fields set.
+// Taiga rejects it with a conflict if version is not the current one.
+type patchDTO struct {
+	Status        int64   `json:"status,omitempty"`
+	AssignedTo    int64   `json:"assigned_to,omitempty"`
+	AssignedUsers []int64 `json:"assigned_users,omitempty"`
+	Version       int     `json:"version"`
 }
 
 // PatchTask changes the Task with the given ID, which the Team Member last
 // saw in version, and returns it as Taiga saved it.
 func (c *Client) PatchTask(ctx context.Context, id int64, version int, p domain.TaskPatch) (domain.Task, error) {
 	var d taskDTO
-	body := statusPatchDTO{Status: p.Status, Version: version}
+	body := patchDTO{Status: p.Status, AssignedTo: p.Assignee, Version: version}
 	if err := c.patch(ctx, "/tasks/"+strconv.FormatInt(id, 10), body, &d); err != nil {
 		return domain.Task{}, err
 	}
@@ -389,7 +391,7 @@ func (c *Client) PatchTask(ctx context.Context, id int64, version int, p domain.
 // Member last saw in version, and returns it as Taiga saved it.
 func (c *Client) PatchUserStory(ctx context.Context, id int64, version int, p domain.UserStoryPatch) (domain.UserStory, error) {
 	var d userStoryDTO
-	body := statusPatchDTO{Status: p.Status, Version: version}
+	body := patchDTO{Status: p.Status, AssignedTo: p.Assignee, AssignedUsers: p.Assignees, Version: version}
 	if err := c.patch(ctx, "/userstories/"+strconv.FormatInt(id, 10), body, &d); err != nil {
 		return domain.UserStory{}, err
 	}

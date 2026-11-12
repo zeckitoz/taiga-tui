@@ -124,12 +124,19 @@ type SprintContent struct {
 	Tasks       []Task
 }
 
-// TaskPatch is a change to a Task: its new Status.
+// TaskPatch is a change to a Task. A zero field stays as it is.
 type TaskPatch struct {
-	Status int64
+	// Status is the new Status, Assignee the new Assignee.
+	Status   int64
+	Assignee int64
 }
 
-// UserStoryPatch is a change to a User Story: its new Status.
+// UserStoryPatch is a change to a User Story. A zero or nil field stays as
+// it is.
 type UserStoryPatch struct {
 	Status int64
+	// Assignee is the new main Assignee and Assignees all the Assignees
+	// then, main one first.
+	Assignee  int64
+	Assignees []int64
 }

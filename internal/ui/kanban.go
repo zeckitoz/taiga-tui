@@ -25,7 +25,7 @@ const (
 func kanbanKeys(k board.Kanban) []string {
 	var keys []string
 	if k.SelectedIndex() >= 0 {
-		keys = append(keys, "⇧←/→ status", "s pick")
+		keys = append(keys, "⇧←/→ status", "s pick", "t take over")
 	}
 	return append(keys, "←/→ tab", "↑/↓ move", "enter detail", "r refresh", ": menu", "? help")
 }

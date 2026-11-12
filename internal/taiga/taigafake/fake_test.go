@@ -210,6 +210,21 @@ func TestPatchTaskChangesStatusAndBumpsVersionLikeTaiga(t *testing.T) {
 	}
 }
 
+func TestPatchTakeOverChangesAssigneesAndKeepsStatusLikeTaiga(t *testing.T) {
+	f := newFake()
+	f.SetTasks(7, domain.Task{ID: 20, Status: 1, Assignee: 43})
+
+	task, terr := f.PatchTask(t.Context(), 20, 0, domain.TaskPatch{Assignee: 42})
+	story, serr := f.PatchUserStory(t.Context(), 10, 0, domain.UserStoryPatch{Assignee: 42, Assignees: []int64{42, 43}})
+
+	if terr != nil || task.Assignee != 42 || task.Status != 1 || task.Version != 1 {
+		t.Errorf("task %+v, %v", task, terr)
+	}
+	if serr != nil || !slices.Equal(story.Assignees, []int64{42, 43}) || story.Status != 1 || story.Version != 1 {
+		t.Errorf("story %+v, %v", story, serr)
+	}
+}
+
 func TestPatchesNeverChangeTheDataPassedIn(t *testing.T) {
 	stories := []domain.UserStory{{ID: 10, Status: 1}}
 	tasks := []domain.Task{{ID: 20, Status: 1}}

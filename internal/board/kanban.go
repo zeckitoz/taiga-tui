@@ -147,6 +147,7 @@ func (k Kanban) regrouped() Kanban {
 	k.byStatus = map[int64][]domain.UserStory{}
 	for _, s := range k.stories {
 		s.Status = k.saves.status(UserStoryItem, s.ID, s.Status)
+		s.Assignees = k.saves.assignees(s.ID, s.Assignees)
 		k.byStatus[s.Status] = append(k.byStatus[s.Status], s)
 	}
 	for id, list := range k.byStatus {
@@ -302,6 +303,24 @@ func (k Kanban) change(to target, sent Sent) (Kanban, Effect, error) {
 	return k.regrouped().follow(it.id, save.Status), save, nil
 }
 
+// TakeOver makes the Team Member the Assignee of the selected User Story
+// right away, keeping the other Assignees, and returns the effect of saving
+// the change, which the App records in sent once it sends it. It returns a
+// Rejection instead if the change cannot be made, and neither if no User
+// Story is selected.
+func (k Kanban) TakeOver(sent Sent) (Kanban, Effect, error) {
+	it, ok := k.selectedItem()
+	if !ok {
+		return k, nil, nil
+	}
+	sv, eff, err := k.saves.takeOver(k.project, k.me, sent, it, ConfirmTakeOver{})
+	if err != nil {
+		return k, nil, err
+	}
+	k.saves = sv
+	return k.regrouped(), eff, nil
+}
+
 // StatusOptions returns the Statuses the selected User Story can be moved
 // to, or a Rejection if it cannot be changed right now. It returns no
 // Statuses if no User Story is selected.
@@ -319,12 +338,12 @@ func (k Kanban) selectedItem() (workItem, bool) {
 	if !ok || !k.loaded {
 		return workItem{}, false
 	}
-	return workItem{kind: UserStoryItem, id: s.ID, ref: s.Ref, status: s.Status, version: s.Version}, true
+	return workItem{kind: UserStoryItem, id: s.ID, ref: s.Ref, status: s.Status, version: s.Version, assignees: s.Assignees}, true
 }
 
-// StatusSaved takes the User Story as Taiga saved it from the result of
+// Saved takes the User Story as Taiga saved it from the result of
 // save, or returns false if the result no longer counts.
-func (k Kanban) StatusSaved(save SaveStatus, saved domain.UserStory) (Kanban, bool) {
+func (k Kanban) Saved(save Save, saved domain.UserStory) (Kanban, bool) {
 	var ok bool
 	if k.saves, ok = k.saves.end(save); !ok {
 		return k, false
@@ -343,11 +362,11 @@ func (k Kanban) Replace(saved domain.UserStory) Kanban {
 	return k.regrouped()
 }
 
-// StatusNotSaved undoes the change of save, with the cursor following the
+// NotSaved undoes the change of save, with the cursor following the
 // User Story back if it is selected, and returns the effect of reloading
 // the board if the failure asks for it. It returns false if the result no
 // longer counts.
-func (k Kanban) StatusNotSaved(save SaveStatus, f SaveFailure) (Kanban, Effect, bool) {
+func (k Kanban) NotSaved(save Save, f SaveFailure) (Kanban, Effect, bool) {
 	var ok bool
 	if k.saves, ok = k.saves.end(save); !ok {
 		return k, nil, false
@@ -408,6 +427,11 @@ func assigneesOf(p domain.Project, me int64, ids []int64) []Assignee {
 		}
 	}
 	return out
+}
+
+// memberName returns the name of the Team Member with the given ID in p.
+func memberName(p domain.Project, id int64) string {
+	return assigneesOf(p, 0, []int64{id})[0].Name
 }
 
 // Initials returns two uppercase letters for a name: the first letters of
