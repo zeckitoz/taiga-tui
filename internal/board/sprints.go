@@ -19,6 +19,11 @@ type Sprints struct {
 	sprintsGen, taskboardGen int
 	taskboard                Taskboard
 	hasTaskboard             bool
+	// refreshingSprints and refreshingTaskboard tell that a reload of the
+	// Sprints or the Taskboard shown is on its way.
+	refreshingSprints, refreshingTaskboard bool
+	// mine is applied to every Taskboard shown, see WithMine.
+	mine bool
 }
 
 // LoadSprints is the effect of loading the Sprints of a project. Its result
@@ -47,9 +52,20 @@ func NewSprints(p domain.Project, me int64) Sprints {
 	return Sprints{project: p, me: me}
 }
 
+// WithMine shows only the work of the Team Member on the Taskboard shown and
+// on those opened later if mine is set.
+func (s Sprints) WithMine(mine bool) Sprints {
+	s.mine = mine
+	if s.hasTaskboard {
+		s.taskboard = s.taskboard.WithMine(mine)
+	}
+	return s
+}
+
 // LoadSprints returns the effect of loading the Sprints.
 func (s Sprints) LoadSprints() (Sprints, LoadSprints) {
 	s.sprintsGen++
+	s.refreshingSprints = s.listed
 	return s, LoadSprints{ProjectID: s.project.ID, Generation: s.sprintsGen, Refresh: s.listed}
 }
 
@@ -65,7 +81,30 @@ func (s Sprints) SprintsLoaded(load LoadSprints, list []domain.Sprint) (Sprints,
 		return s, false
 	}
 	s.list, s.listed = slices.Clone(list), true
+	s.refreshingSprints = false
 	return s, true
+}
+
+// SprintsFailed ends the load of the Sprints that failed, or returns false
+// if the failure no longer counts.
+func (s Sprints) SprintsFailed(load LoadSprints) (Sprints, bool) {
+	if !s.SprintsCurrent(load) {
+		return s, false
+	}
+	s.refreshingSprints = false
+	return s, true
+}
+
+// Refreshing reports whether the Sprints or the Taskboard shown are being
+// reloaded while they stay visible.
+func (s Sprints) Refreshing() bool { return s.refreshingSprints || s.refreshingTaskboard }
+
+// CancelLoads drops the loads on their way: their results no longer count.
+func (s Sprints) CancelLoads() Sprints {
+	s.sprintsGen++
+	s.taskboardGen++
+	s.refreshingSprints, s.refreshingTaskboard = false, false
+	return s
 }
 
 // Listed reports whether the Sprints are loaded.
@@ -87,11 +126,13 @@ func (s Sprints) Open(sprint domain.Sprint) (Sprints, LoadTaskboard) {
 		s.taskboard = s.taskboard.DropSaves()
 	}
 	s.taskboardGen++
+	refresh := s.hasTaskboard && s.taskboard.Sprint().ID == sprint.ID
+	s.refreshingTaskboard = refresh
 	return s, LoadTaskboard{
 		ProjectID:  s.project.ID,
 		Sprint:     sprint,
 		Generation: s.taskboardGen,
-		Refresh:    s.hasTaskboard && s.taskboard.Sprint().ID == sprint.ID,
+		Refresh:    refresh,
 	}
 }
 
@@ -110,8 +151,19 @@ func (s Sprints) TaskboardLoaded(load LoadTaskboard, c domain.SprintContent) (Sp
 	if s.hasTaskboard && s.taskboard.Sprint().ID == load.Sprint.ID {
 		s.taskboard = s.taskboard.Reload(c)
 	} else {
-		s.taskboard, s.hasTaskboard = NewTaskboard(s.project, load.Sprint, c, s.me), true
+		s.taskboard, s.hasTaskboard = NewTaskboard(s.project, load.Sprint, c, s.me).WithMine(s.mine), true
 	}
+	s.refreshingTaskboard = false
+	return s, true
+}
+
+// TaskboardFailed ends the load of the Taskboard that failed, or returns
+// false if the failure no longer counts.
+func (s Sprints) TaskboardFailed(load LoadTaskboard) (Sprints, bool) {
+	if !s.TaskboardCurrent(load) {
+		return s, false
+	}
+	s.refreshingTaskboard = false
 	return s, true
 }
 

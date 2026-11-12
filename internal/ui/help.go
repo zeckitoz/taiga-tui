@@ -24,6 +24,7 @@ var kanbanHelp = []keyHelp{
 	{"↵ enter", "show / hide detail"},
 	{"a", "assign to me"},
 	{"s", "pick a status"},
+	{"m", "show only my user stories / all"},
 }
 
 // taskboardHelp are the keys of the Taskboard.
@@ -32,6 +33,7 @@ var taskboardHelp = []keyHelp{
 	{"↵ enter", "fold / unfold user story, or show / hide detail of a task"},
 	{"a", "assign to me"},
 	{"s", "pick a status"},
+	{"m", "show only my tasks / all"},
 }
 
 // helpColumnGap separates the columns of the full help.

@@ -22,6 +22,8 @@ const (
 	loadingSpinner spinnerID = iota
 	// savingSpinner turns on the rows whose changes are being saved.
 	savingSpinner
+	// refreshSpinner shows in the header while a board reloads.
+	refreshSpinner
 )
 
 // spinnerTickMsg advances the spinner with the ID whose run matches.

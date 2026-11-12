@@ -142,12 +142,12 @@ func TestReloadKeepsTabAndSelectedUserStory(t *testing.T) {
 	}
 }
 
-func TestReloadSelectsFirstRowWhenSelectedUserStoryVanished(t *testing.T) {
-	k := board.NewKanban(project, stories, me).CursorDown()
+func TestReloadSelectsNeighbourWhenSelectedUserStoryVanished(t *testing.T) {
+	k := board.NewKanban(project, stories, me).CursorDown() // #12 between #11 and #10
 
 	k = k.Reload(stories[:2])
 
-	if got := selected(k); got != 11 {
+	if got := selected(k); got != 10 {
 		t.Errorf("selected %d", got)
 	}
 }
