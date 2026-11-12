@@ -654,14 +654,14 @@ func (a App) projectSwitchFailed(err error) App {
 // run translates an effect that board b returned into its command.
 func (a App) run(eff board.Effect, b config.Board) tea.Cmd {
 	api, slug := a.deps.Taiga, a.project.Slug
-	switch eff := eff.(type) {
-	case board.ReloadProject:
-		return func() tea.Msg {
-			p, err := api.Project(context.Background(), slug)
-			return projectReloadedMsg{on: b, load: eff, project: p, err: err}
-		}
+	reload, ok := eff.(board.ReloadProject)
+	if !ok {
+		return nil
 	}
-	return nil
+	return func() tea.Msg {
+		p, err := api.Project(context.Background(), slug)
+		return projectReloadedMsg{on: b, load: reload, project: p, err: err}
+	}
 }
 
 // afterLoad follows a load of board b: it reloads the project if the loaded

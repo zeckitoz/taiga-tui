@@ -275,7 +275,7 @@ func TestTaskboardScrollsToKeepCursorVisible(t *testing.T) {
 		tasks = append(tasks, domain.Task{ID: int64(2000 + i), Ref: 2000 + i, Title: fmt.Sprintf("Task %d", i), Status: 201, UserStory: 501, Sprint: 304, TaskboardOrder: int64(i)})
 	}
 	api.SetTasks(webShop.ID, tasks...)
-	h := onTaskboardWith(t, api, 100, 24)
+	h := onTaskboardWith(t, api)
 
 	for range 30 {
 		h.key("j")
@@ -406,7 +406,7 @@ func TestEmptySprintShowsHintAndSwitchesSprint(t *testing.T) {
 	api := newFake()
 	api.SetStories(webShop.ID)
 	api.SetTasks(webShop.ID)
-	h := onTaskboardWith(t, api, 100, 24)
+	h := onTaskboardWith(t, api)
 
 	h.golden("taskboard_no_user_stories")
 
@@ -579,7 +579,7 @@ func TestPickedProjectOpensKanbanIfEnabledOtherwiseTaskboard(t *testing.T) {
 }
 
 // onTaskboardWith returns a harness showing the Taskboard of Web Shop on api.
-func onTaskboardWith(t *testing.T, api *taigafake.Fake, w, h int) *harness {
+func onTaskboardWith(t *testing.T, api *taigafake.Fake) *harness {
 	t.Helper()
 	st := aliceState(webShop.ID)
 	st.LastBoard = config.BoardTaskboard

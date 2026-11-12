@@ -214,7 +214,7 @@ func TestTaskboardShowsUnknownStatusAndMemberAfterTheProjectReload(t *testing.T)
 	api.SetTasks(webShop.ID, append([]domain.Task{
 		{ID: 899, Ref: 99, Title: "Mystery task", Status: 299, UserStory: 501, Sprint: 304, Assignee: 99, TaskboardOrder: 0},
 	}, webShopTasks...)...)
-	h := onTaskboardWith(t, api, 100, 24)
+	h := onTaskboardWith(t, api)
 
 	if got := api.Calls("Project"); got != 2 {
 		t.Errorf("%d Project calls, want 2 (start and one reload)", got)
