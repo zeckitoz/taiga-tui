@@ -31,8 +31,8 @@ var taskboardHelp = []keyHelp{
 	{"⇧←/→ H/L", "change to previous / next status"},
 	{"s", "pick a status"},
 	{"↑/↓ j/k", "move"},
-	{"←/→ h/l", "fold / unfold user story"},
-	{"enter", "fold user story, show / hide detail"},
+	{"←/→ h/l", "fold / unfold user story, hide / show detail"},
+	{"enter", "fold / unfold user story, or show / hide detail of a task"},
 }
 
 // helpColumnGap separates the columns of the full help.

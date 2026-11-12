@@ -116,13 +116,83 @@ func TestTaskboardNavigationCollapsesAndExpands(t *testing.T) {
 	if strings.Contains(h.plainView(), "Validate card number") {
 		t.Errorf("enter did not collapse:\n%s", h.plainView())
 	}
-	if !strings.Contains(h.plainView(), "Tasks") {
-		t.Error("enter on a User Story closed the detail view")
-	}
 	h.key("right")
 	h.key("k")
 	if got := selectedTaskboardRef(h); got != 12 {
 		t.Errorf("k at the top selected #%d", got)
+	}
+}
+
+func TestFoldingHidesTheDetailViewAndUnfoldingShowsIt(t *testing.T) {
+	for _, keys := range [][2]string{{"enter", "enter"}, {"h", "l"}, {"left", "right"}} {
+		t.Run(keys[0], func(t *testing.T) {
+			h := onTaskboard(t, 120, 40) // #12 selected, detail view open
+
+			h.key(keys[0])
+			if h.app.detailOpen {
+				t.Errorf("detail view still open after folding:\n%s", h.plainView())
+			}
+			h.key(keys[1])
+			if !h.app.detailOpen {
+				t.Errorf("detail view not shown after unfolding:\n%s", h.plainView())
+			}
+		})
+	}
+}
+
+func TestFoldingAnotherUserStoryKeepsTheDetailViewHidden(t *testing.T) {
+	h := onTaskboard(t, 120, 40)
+	h.key("h") // fold #12, hides the detail view
+	h.key("j") // #21, expanded
+
+	h.key("h")
+
+	if h.app.detailOpen {
+		t.Errorf("folding brought the detail view back:\n%s", h.plainView())
+	}
+	h.key("l")
+	if !h.app.detailOpen {
+		t.Error("unfolding did not show the detail view")
+	}
+}
+
+func TestUnchangedFoldStateLeavesTheDetailViewAlone(t *testing.T) {
+	h := onTaskboard(t, 120, 40)
+	h.key("j")
+	h.key("enter") // hide the detail view on a Task
+	h.key("k")     // #12, expanded
+
+	h.key("l") // already expanded
+
+	if h.app.detailOpen {
+		t.Error("l on an expanded User Story showed the detail view")
+	}
+	h.key("j")
+	h.key("left") // back to #12, no fold
+	if h.app.detailOpen {
+		t.Error("moving up to the User Story showed the detail view")
+	}
+}
+
+func TestEnterOnUserStoryWithoutTasksFoldsAndSetsTheDetailView(t *testing.T) {
+	h := onTaskboard(t, 120, 40)
+	for range 10 { // #15 Product search has no Tasks
+		if !shownTaskboard(h).TaskSelected() && selectedTaskboardRef(h) == 15 {
+			break
+		}
+		h.key("j")
+	}
+	if selectedTaskboardRef(h) != 15 {
+		t.Fatalf("selected #%d", selectedTaskboardRef(h))
+	}
+
+	h.key("enter")
+	if h.app.detailOpen {
+		t.Errorf("detail view still open:\n%s", h.plainView())
+	}
+	h.key("enter")
+	if !h.app.detailOpen {
+		t.Errorf("detail view not open again:\n%s", h.plainView())
 	}
 }
 
