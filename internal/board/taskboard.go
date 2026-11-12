@@ -494,11 +494,34 @@ func (t Taskboard) StatusSelected() bool {
 // sent once it sends it. It returns a Rejection instead if the change
 // cannot be made, and neither if no item is selected.
 func (t Taskboard) ChangeStatus(d Direction, sent Sent) (Taskboard, Effect, error) {
+	return t.change(toNeighbour(d), sent)
+}
+
+// PickStatus is like ChangeStatus, but moves the selected row to the
+// Status of its kind with the given ID, which may be any one.
+func (t Taskboard) PickStatus(id int64, sent Sent) (Taskboard, Effect, error) {
+	return t.change(toStatus(id), sent)
+}
+
+// StatusOptions returns the Statuses the selected row can be changed to, or
+// a Rejection if it cannot be changed right now. It returns no Statuses if
+// the selected row has no Status.
+func (t Taskboard) StatusOptions(sent Sent) (StatusOptions, error) {
+	it, ok := t.selectedItem()
+	if !ok {
+		return StatusOptions{}, nil
+	}
+	return t.saves.options(t.project, sent, it)
+}
+
+// change starts the Status Change of the selected row to the Status that
+// to picks.
+func (t Taskboard) change(to target, sent Sent) (Taskboard, Effect, error) {
 	it, ok := t.selectedItem()
 	if !ok {
 		return t, nil, nil
 	}
-	sv, save, err := t.saves.changeStatus(t.project, sent, it, d)
+	sv, save, err := t.saves.changeStatus(t.project, sent, it, to)
 	if err != nil {
 		return t, nil, err
 	}

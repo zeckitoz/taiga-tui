@@ -29,6 +29,10 @@ type boardView struct {
 	changeStatus func(App, board.Direction) (App, board.Effect, error)
 	statusSaved  func(App, statusSavedMsg) (App, board.Effect, bool)
 	dropSaves    func(App) App
+	// statusOptions lists the Statuses the selected row can be changed to,
+	// pickStatus moves it to one of them.
+	statusOptions func(App) (board.StatusOptions, error)
+	pickStatus    func(App, int64) (App, board.Effect, error)
 	// scroll keeps the selected row visible.
 	scroll func(*App)
 	// path is the header after the project name.
@@ -44,15 +48,17 @@ type boardView struct {
 func boardOps(b config.Board) boardView {
 	if b == config.BoardTaskboard {
 		return boardView{
-			name:         "Taskboard",
-			shortName:    "Taskboard",
-			enabled:      func(p domain.ProjectSummary) bool { return p.BacklogEnabled },
-			open:         App.openTaskboard,
-			update:       App.updateTaskboard,
-			loadDetail:   App.loadTaskDetail,
-			reload:       App.reloadTaskboard,
-			changeStatus: App.changeTaskboardStatus,
-			statusSaved:  App.taskboardStatusSaved,
+			name:          "Taskboard",
+			shortName:     "Taskboard",
+			enabled:       func(p domain.ProjectSummary) bool { return p.BacklogEnabled },
+			open:          App.openTaskboard,
+			update:        App.updateTaskboard,
+			loadDetail:    App.loadTaskDetail,
+			reload:        App.reloadTaskboard,
+			changeStatus:  App.changeTaskboardStatus,
+			statusOptions: App.statusOptionsTaskboard,
+			pickStatus:    App.pickTaskboardStatus,
+			statusSaved:   App.taskboardStatusSaved,
 			dropSaves: func(a App) App {
 				return a.withTaskboard(board.Taskboard.DropSaves)
 			},
@@ -64,15 +70,17 @@ func boardOps(b config.Board) boardView {
 		}
 	}
 	return boardView{
-		name:         "Kanban Board",
-		shortName:    "Kanban",
-		enabled:      func(p domain.ProjectSummary) bool { return p.KanbanEnabled },
-		open:         App.loadKanban,
-		update:       App.updateKanban,
-		loadDetail:   App.loadUserStoryDetail,
-		reload:       App.loadKanban,
-		changeStatus: App.changeKanbanStatus,
-		statusSaved:  App.kanbanStatusSaved,
+		name:          "Kanban Board",
+		shortName:     "Kanban",
+		enabled:       func(p domain.ProjectSummary) bool { return p.KanbanEnabled },
+		open:          App.loadKanban,
+		update:        App.updateKanban,
+		loadDetail:    App.loadUserStoryDetail,
+		reload:        App.loadKanban,
+		changeStatus:  App.changeKanbanStatus,
+		statusOptions: App.statusOptionsKanban,
+		pickStatus:    App.pickKanbanStatus,
+		statusSaved:   App.kanbanStatusSaved,
 		dropSaves: func(a App) App {
 			a.kanban = a.kanban.DropSaves()
 			return a

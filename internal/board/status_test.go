@@ -2,6 +2,7 @@ package board_test
 
 import (
 	"errors"
+	"slices"
 	"testing"
 
 	"github.com/zeckitoz/taiga-tui/internal/board"
@@ -409,5 +410,110 @@ func TestTaskboardUserStoryRowRevertsStatusWhenSaveFails(t *testing.T) {
 
 	if row := tb.Rows()[2]; !ok || row.Saving || row.Status.Name != "In progress" {
 		t.Errorf("row %+v", row)
+	}
+}
+
+func TestKanbanOffersTheActiveStatusesOfTheSelectedUserStory(t *testing.T) {
+	opts, err := board.NewKanban(project, stories, me).StatusOptions(nothingSent)
+
+	if err != nil {
+		t.Fatal(err)
+	}
+	var names []string
+	for _, s := range opts.Statuses {
+		names = append(names, s.Name)
+	}
+	if want := []string{"New", "In progress", "Done"}; !slices.Equal(names, want) || opts.Current != 1 {
+		t.Errorf("statuses %v, current %d", names, opts.Current)
+	}
+}
+
+func TestKanbanMovesToAnyStatusAndSavesIt(t *testing.T) {
+	versioned := append([]domain.UserStory{}, stories...)
+	versioned[1].Version = 6 // #2 First
+	k := board.NewKanban(project, versioned, me)
+
+	k, eff, err := k.PickStatus(4, nothingSent)
+
+	save, ok := eff.(board.SaveStatus)
+	if err != nil || !ok {
+		t.Fatalf("effect %#v, error %v", eff, err)
+	}
+	if save.Kind != board.UserStoryItem || save.ID != 11 || save.Status != 4 || save.Version != 6 || save.Generation != 1 {
+		t.Errorf("save %+v", save)
+	}
+	if got := k.ActiveStatus().Name; got != "Done" || !selectedRow(k).Saving {
+		t.Errorf("cursor in %q, selected %+v", got, selectedRow(k))
+	}
+}
+
+func TestPickStatusRefusesWhatTheNeighbourKeysRefuse(t *testing.T) {
+	noPerm := project
+	noPerm.Permissions.ModifyUserStory = false
+	saving, _ := changeKanban(t, board.NewKanban(project, stories, me))
+
+	for name, tt := range map[string]struct {
+		k    board.Kanban
+		want error
+	}{
+		"saving":     {saving, board.ErrStillSaving},
+		"unknown":    {board.NewKanban(project, stories, me), board.ErrUnknownStatus},
+		"archived":   {board.NewKanban(project, stories, me), board.ErrUnknownStatus},
+		"permission": {board.NewKanban(noPerm, stories, me), nil},
+	} {
+		id := int64(4)
+		switch name {
+		case "unknown":
+			id = 99
+		case "archived":
+			id = 3 // Old
+		}
+		_, eff, err := tt.k.PickStatus(id, nothingSent)
+		_, optErr := tt.k.StatusOptions(nothingSent)
+		if eff != nil || err == nil || (name != "unknown" && name != "archived" && optErr == nil) {
+			t.Errorf("%s: effect %#v, errors %v, %v", name, eff, err, optErr)
+		}
+		if tt.want != nil && !errors.Is(err, tt.want) {
+			t.Errorf("%s: got %v, want %v", name, err, tt.want)
+		}
+		if name == "permission" && err.Error() != "You don't have permission to change user stories" {
+			t.Errorf("%s: %v", name, err)
+		}
+	}
+}
+
+func TestTaskboardOffersTheStatusesOfTheKindOfTheSelectedRow(t *testing.T) {
+	task := press(newTaskboard(), down) // a Task
+	story := newTaskboard()             // its User Story
+
+	taskOpts, err := task.StatusOptions(nothingSent)
+	if err != nil {
+		t.Fatal(err)
+	}
+	storyOpts, err := story.StatusOptions(nothingSent)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if taskOpts.Kind != board.TaskItem || storyOpts.Kind != board.UserStoryItem {
+		t.Errorf("kinds %v, %v", taskOpts.Kind, storyOpts.Kind)
+	}
+	if len(taskOpts.Statuses) != len(scrum.TaskStatuses) || len(storyOpts.Statuses) == 0 {
+		t.Errorf("task statuses %d, story statuses %d", len(taskOpts.Statuses), len(storyOpts.Statuses))
+	}
+	_, eff, err := task.PickStatus(scrum.TaskStatuses[len(scrum.TaskStatuses)-1].ID, nothingSent)
+	if save, ok := eff.(board.SaveStatus); err != nil || !ok || save.Kind != board.TaskItem {
+		t.Errorf("effect %#v, error %v", eff, err)
+	}
+}
+
+func TestTaskboardGroupWithoutUserStoryHasNoStatusToPick(t *testing.T) {
+	tb := press(newTaskboard(), down, down, down, down, down, down)
+
+	opts, err := tb.StatusOptions(nothingSent)
+	_, eff, pickErr := tb.PickStatus(1, nothingSent)
+
+	if len(opts.Statuses) != 0 || err != nil || eff != nil || pickErr != nil {
+		t.Errorf("got %+v, %v, %#v, %v", opts, err, eff, pickErr)
 	}
 }

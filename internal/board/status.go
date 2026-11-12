@@ -195,21 +195,72 @@ type saves struct {
 	byItem map[itemKey]SaveStatus
 }
 
-// changeStatus starts the Status Change of it in direction d, unless the
-// Team Member may not change it, a save of it is still waiting for its
-// result in sent, or its Status has no Status next to it in d.
-func (s saves) changeStatus(p domain.Project, sent Sent, it workItem, d Direction) (saves, SaveStatus, error) {
+// StatusOptions are the Statuses the selected row can be changed to.
+type StatusOptions struct {
+	Kind ItemKind
+	// Item is the ID of the row's item, so that a caller can tell whether
+	// the same row is still selected. Statuses are in Taiga order. Current
+	// is the ID of the Status the row has.
+	Item     int64
+	Statuses []domain.Status
+	Current  int64
+}
+
+// options returns the Statuses it can be changed to, or the reason why the
+// Team Member cannot change it right now.
+func (s saves) options(p domain.Project, sent Sent, it workItem) (StatusOptions, error) {
+	if err := s.refusal(p, sent, it); err != nil {
+		return StatusOptions{}, err
+	}
+	return StatusOptions{Kind: it.kind, Item: it.id, Statuses: statusesOf(p, it.kind), Current: it.status}, nil
+}
+
+// refusal is the Rejection of any change to it, or nil if there is none:
+// the Team Member may not change it, or a save of it is still waiting for
+// its result in sent.
+func (s saves) refusal(p domain.Project, sent Sent, it workItem) error {
 	if !mayModify(p, it.kind) {
-		return s, SaveStatus{}, noPermission(it.kind)
+		return noPermission(it.kind)
 	}
 	if sent.saving(it.kind, it.id) || s.saving(it.kind, it.id) {
-		return s, SaveStatus{}, ErrStillSaving
+		return ErrStillSaving
 	}
-	to, err := adjacent(statusesOf(p, it.kind), it.status, d)
+	return nil
+}
+
+// target picks the Status a change of an item goes to among its statuses.
+type target func(statuses []domain.Status, current int64) (int64, error)
+
+// toNeighbour goes to the Status next to the current one in direction d.
+func toNeighbour(d Direction) target {
+	return func(statuses []domain.Status, current int64) (int64, error) {
+		return adjacent(statuses, current, d)
+	}
+}
+
+// toStatus goes to the Status with the given ID, which must be one the item
+// can have.
+func toStatus(id int64) target {
+	return func(statuses []domain.Status, _ int64) (int64, error) {
+		if !slices.ContainsFunc(statuses, func(s domain.Status) bool { return s.ID == id }) {
+			return 0, ErrUnknownStatus
+		}
+		return id, nil
+	}
+}
+
+// changeStatus starts the Status Change of it to the Status that to picks,
+// unless the Team Member may not change it, a save of it is still waiting
+// for its result in sent, or to refuses.
+func (s saves) changeStatus(p domain.Project, sent Sent, it workItem, to target) (saves, SaveStatus, error) {
+	if err := s.refusal(p, sent, it); err != nil {
+		return s, SaveStatus{}, err
+	}
+	status, err := to(statusesOf(p, it.kind), it.status)
 	if err != nil {
 		return s, SaveStatus{}, err
 	}
-	save := SaveStatus{Kind: it.kind, ID: it.id, Ref: it.ref, Status: to, Version: it.version, Generation: sent.generation + 1}
+	save := SaveStatus{Kind: it.kind, ID: it.id, Ref: it.ref, Status: status, Version: it.version, Generation: sent.generation + 1}
 	s.byItem = maps.Clone(s.byItem) // never share the map with the receiver
 	if s.byItem == nil {
 		s.byItem = map[itemKey]SaveStatus{}

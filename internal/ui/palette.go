@@ -43,6 +43,8 @@ const (
 	entryBoard entryKind = iota
 	entrySprint
 	entryProject
+	// entryStatus is a Status of the selected row, id its ID.
+	entryStatus
 )
 
 // paletteEntry is one choice of the command palette.
@@ -54,6 +56,8 @@ type paletteEntry struct {
 	id    int64
 
 	label string
+	// search is what the filter matches instead of the label, if set.
+	search string
 	// note follows the label in an aligned column.
 	note string
 	// current marks where the Team Member is with "●".
@@ -77,11 +81,12 @@ type palette struct {
 	top      int
 }
 
-// newPalette returns the palette with entries and an empty filter.
-func newPalette(entries []paletteEntry) palette {
+// newPalette returns the palette with entries and an empty filter showing
+// placeholder.
+func newPalette(entries []paletteEntry, placeholder string) palette {
 	p := palette{filter: newField(), selected: -1}
 	p.filter.Prompt = "❯ "
-	p.filter.Placeholder = "Go to a board, sprint or project"
+	p.filter.Placeholder = placeholder
 	p.filter.Focus()
 	p.setEntries(entries)
 	return p
@@ -98,6 +103,14 @@ func (p *palette) setEntries(entries []paletteEntry) {
 	p.refilter()
 }
 
+// searched returns the text the filter matches.
+func (e paletteEntry) searched() string {
+	if e.search != "" {
+		return e.search
+	}
+	return e.label
+}
+
 // goesTo reports whether e and o go to the same place.
 func (e paletteEntry) goesTo(o paletteEntry) bool {
 	return e.kind == o.kind && e.board == o.board && e.id == o.id
@@ -106,7 +119,7 @@ func (e paletteEntry) goesTo(o paletteEntry) bool {
 // refilter ranks the entries by the filter and selects the first one that
 // can be chosen if the selection is gone.
 func (p *palette) refilter() {
-	p.visible = fuzzyRank(p.filter.Value(), len(p.entries), func(i int) string { return p.entries[i].label })
+	p.visible = fuzzyRank(p.filter.Value(), len(p.entries), func(i int) string { return p.entries[i].searched() })
 	if !slices.Contains(p.visible, p.selected) || p.entries[p.selected].disabled {
 		p.selectFirst()
 	}

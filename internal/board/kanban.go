@@ -278,17 +278,48 @@ func (k Kanban) selected() (domain.UserStory, bool) {
 // records in sent once it sends it. It returns a Rejection instead if the
 // change cannot be made, and neither if no User Story is selected.
 func (k Kanban) ChangeStatus(d Direction, sent Sent) (Kanban, Effect, error) {
-	s, ok := k.selected()
-	if !ok || !k.loaded {
+	return k.change(toNeighbour(d), sent)
+}
+
+// PickStatus is like ChangeStatus, but moves the selected User Story to
+// the active Status with the given ID, which may be any one.
+func (k Kanban) PickStatus(id int64, sent Sent) (Kanban, Effect, error) {
+	return k.change(toStatus(id), sent)
+}
+
+// change starts the Status Change of the selected User Story to the
+// Status that to picks.
+func (k Kanban) change(to target, sent Sent) (Kanban, Effect, error) {
+	it, ok := k.selectedItem()
+	if !ok {
 		return k, nil, nil
 	}
-	it := workItem{kind: UserStoryItem, id: s.ID, ref: s.Ref, status: s.Status, version: s.Version}
-	sv, save, err := k.saves.changeStatus(k.project, sent, it, d)
+	sv, save, err := k.saves.changeStatus(k.project, sent, it, to)
 	if err != nil {
 		return k, nil, err
 	}
 	k.saves = sv
-	return k.regrouped().follow(s.ID, save.Status), save, nil
+	return k.regrouped().follow(it.id, save.Status), save, nil
+}
+
+// StatusOptions returns the Statuses the selected User Story can be moved
+// to, or a Rejection if it cannot be changed right now. It returns no
+// Statuses if no User Story is selected.
+func (k Kanban) StatusOptions(sent Sent) (StatusOptions, error) {
+	it, ok := k.selectedItem()
+	if !ok {
+		return StatusOptions{}, nil
+	}
+	return k.saves.options(k.project, sent, it)
+}
+
+// selectedItem returns the selected User Story as a work item.
+func (k Kanban) selectedItem() (workItem, bool) {
+	s, ok := k.selected()
+	if !ok || !k.loaded {
+		return workItem{}, false
+	}
+	return workItem{kind: UserStoryItem, id: s.ID, ref: s.Ref, status: s.Status, version: s.Version}, true
 }
 
 // StatusSaved takes the User Story as Taiga saved it from the result of

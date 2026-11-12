@@ -207,6 +207,11 @@ type App struct {
 	// paletteOpen shows the command palette over the board.
 	paletteOpen bool
 	palette     palette
+	// paletteStatus tells that the palette lists the Statuses of the
+	// selected row instead of the places to go to.
+	paletteStatus bool
+	// pickedFor is the row the Status palette was opened for.
+	pickedFor board.StatusOptions
 	// helpOpen expands the footer of the board into the full help.
 	helpOpen bool
 }
@@ -681,7 +686,7 @@ func (a App) sprintsLoaded(msg sprintsLoadedMsg) (tea.Model, tea.Cmd) {
 		a.state = a.state.WithoutSprint(a.project.ID)
 		a = a.saveState()
 	}
-	if a.paletteOpen {
+	if a.paletteOpen && !a.paletteStatus {
 		a.palette.setEntries(a.paletteEntries())
 		a.palette.scroll(a.paletteListHeight())
 	}
@@ -922,6 +927,8 @@ func (a App) updateBoard(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a, tea.Quit
 	case ":", "ctrl+k":
 		return a.openPalette()
+	case "s":
+		return a.openStatusPalette(), nil
 	case "?":
 		a.helpOpen = !a.helpOpen
 		a.scrollBoard()
@@ -1002,9 +1009,9 @@ func (a App) updateTaskboard(key tea.KeyPressMsg) (App, tea.Cmd) {
 // openPalette shows the command palette over the board and loads the
 // Sprints for it if the project has a Taskboard and they are not loaded.
 func (a App) openPalette() (App, tea.Cmd) {
-	a.paletteOpen = true
+	a.paletteOpen, a.paletteStatus = true, false
 	a.helpOpen = false // the palette has its own footer
-	a.palette = newPalette(a.paletteEntries())
+	a.palette = newPalette(a.paletteEntries(), "Go to a board, sprint or project")
 	a.palette.setWidth(a.width)
 	a.palette.scroll(a.paletteListHeight())
 	if a.hasTaskboard() && !a.sprints.Listed() && a.board != config.BoardTaskboard {
@@ -1080,6 +1087,12 @@ func (a App) updatePalette(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return a, nil
 		}
 		switch e.kind {
+		case entryStatus:
+			// The board may have reloaded under the palette.
+			if opts, err := a.shownBoard().statusOptions(a); err == nil && (opts.Kind != a.pickedFor.Kind || opts.Item != a.pickedFor.Item) {
+				return a, nil
+			}
+			return a.pickStatus(e.id)
 		case entryBoard:
 			return a.openBoard(e.board)
 		case entrySprint:

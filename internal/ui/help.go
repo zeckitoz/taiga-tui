@@ -20,6 +20,7 @@ var commonHelp = []keyHelp{
 // kanbanHelp are the keys of the Kanban Board.
 var kanbanHelp = []keyHelp{
 	{"⇧←/→ H/L", "change to previous / next status"},
+	{"s", "pick a status"},
 	{"←/→ h/l", "previous / next tab"},
 	{"↑/↓ j/k", "move"},
 	{"enter", "show / hide detail"},
@@ -28,6 +29,7 @@ var kanbanHelp = []keyHelp{
 // taskboardHelp are the keys of the Taskboard.
 var taskboardHelp = []keyHelp{
 	{"⇧←/→ H/L", "change to previous / next status"},
+	{"s", "pick a status"},
 	{"↑/↓ j/k", "move"},
 	{"←/→ h/l", "fold / unfold user story"},
 	{"enter", "fold user story, show / hide detail"},

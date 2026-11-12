@@ -7,7 +7,6 @@
                                                                                                     |
                                                                                                     |
                                                                                                     |
-                                                                                                    |
 ────────────────────────────────────────────────────────────────────────────────────────────────────|
  #15 Product search                                                                                 |
  Status     ● New                                                                                   |
@@ -19,6 +18,7 @@
                                                                                                     |
                                                                                                     |
  ⇧←/→ H/L  change to previous / next status    r         refresh                                    |
- ←/→ h/l   previous / next tab                 : ctrl+k  menu: boards, sprints, projects            |
- ↑/↓ j/k   move                                ? esc     close help                                 |
- enter     show / hide detail                  q ctrl+c  quit                                       |
+ s         pick a status                       : ctrl+k  menu: boards, sprints, projects            |
+ ←/→ h/l   previous / next tab                 ? esc     close help                                 |
+ ↑/↓ j/k   move                                q ctrl+c  quit                                       |
+ enter     show / hide detail                                                                       |
