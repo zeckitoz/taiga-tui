@@ -572,9 +572,8 @@ func (a App) startLoading(text string, cmd tea.Cmd) (App, tea.Cmd) {
 }
 
 // failed handles a failed load: an expired session leads to the login, over
-// the board if it is shown,
-// anything else to a full-page error "<what>: <reason>" from which retry
-// repeats the load.
+// the board if it is shown, anything else to a full-page error
+// "<what>: <reason>" from which retry repeats the load.
 func (a App) failed(err error, what string, retry func(App) (App, tea.Cmd)) (tea.Model, tea.Cmd) {
 	a.spinner.stop()
 	if errors.Is(err, taiga.ErrSessionExpired) {
