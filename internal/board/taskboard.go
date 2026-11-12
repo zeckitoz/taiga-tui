@@ -339,28 +339,6 @@ func (t Taskboard) Expanded() (expanded, ok bool) {
 	return !t.collapsed[t.cursor.id], true
 }
 
-// Left selects the User Story of the selected Task, or collapses the
-// selected User Story.
-func (t Taskboard) Left() Taskboard {
-	i := t.SelectedIndex()
-	if i < 0 {
-		return t
-	}
-	if r := t.items()[i]; r.kind == RowTask {
-		t.cursor = item{id: t.groups[r.group].userStory.ID}
-		return t
-	}
-	return t.setCollapsed(t.cursor.id, true)
-}
-
-// Right expands the selected User Story.
-func (t Taskboard) Right() Taskboard {
-	if t.SelectedIndex() < 0 || t.cursor.task {
-		return t
-	}
-	return t.setCollapsed(t.cursor.id, false)
-}
-
 // Toggle collapses or expands the selected User Story.
 func (t Taskboard) Toggle() Taskboard {
 	if t.SelectedIndex() < 0 || t.cursor.task {

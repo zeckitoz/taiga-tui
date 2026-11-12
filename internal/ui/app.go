@@ -995,14 +995,6 @@ func (a App) updateTaskboard(key tea.KeyPressMsg) (App, tea.Cmd) {
 		tb = tb.CursorUp()
 	case "down", "j":
 		tb = tb.CursorDown()
-	case "shift+left", "H":
-		return a.changeStatus(board.Previous)
-	case "shift+right", "L":
-		return a.changeStatus(board.Next)
-	case "left", "h":
-		tb = tb.Left()
-	case "right", "l":
-		tb = tb.Right()
 	case "enter":
 		if tb.TaskSelected() {
 			a.detailOpen = !a.detailOpen
@@ -1010,8 +1002,7 @@ func (a App) updateTaskboard(key tea.KeyPressMsg) (App, tea.Cmd) {
 			tb = tb.Toggle()
 		}
 	}
-	switch key.String() {
-	case "left", "h", "right", "l", "enter":
+	if key.String() == "enter" {
 		a.detailOpen = detailAfterFold(before, tb, a.detailOpen)
 	}
 	a.sprints = a.sprints.WithTaskboard(tb)
@@ -1020,7 +1011,7 @@ func (a App) updateTaskboard(key tea.KeyPressMsg) (App, tea.Cmd) {
 }
 
 // detailAfterFold returns whether the detail view is open after the
-// Taskboard went from before to after by a key that folds or unfolds, which
+// Taskboard went from before to after by enter, which
 // leaves the cursor on its row. Folding the Tasks of a User Story
 // hides the detail view and unfolding them shows it, and nothing else
 // changes it.

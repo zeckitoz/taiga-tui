@@ -90,8 +90,6 @@ func press(tb board.Taskboard, keys ...func(board.Taskboard) board.Taskboard) bo
 var (
 	down   = board.Taskboard.CursorDown
 	up     = board.Taskboard.CursorUp
-	left   = board.Taskboard.Left
-	right  = board.Taskboard.Right
 	toggle = board.Taskboard.Toggle
 )
 
@@ -186,41 +184,6 @@ func TestTaskboardCursorSkipsNoTasksRowsAndStopsAtEdges(t *testing.T) {
 	}
 }
 
-func TestLeftOnTaskJumpsToUserStoryThenCollapsesIt(t *testing.T) {
-	tb := press(newTaskboard(), down, down, down, down) // #31
-
-	tb = press(tb, left)
-	if got := refs(tb); got[2] != "US#12*" {
-		t.Errorf("left on a Task: %v", got)
-	}
-	tb = press(tb, left)
-	want := []string{"US#15", "T#33", "US#12*", "US#20", "none", "US-", "T#41", "T#40"}
-	if got := refs(tb); !slices.Equal(got, want) {
-		t.Errorf("left on a User Story\ngot  %v\nwant %v", got, want)
-	}
-	if tb.Rows()[2].Expanded {
-		t.Error("collapsed User Story still expanded")
-	}
-	if got := refs(press(tb, left)); !slices.Equal(got, want) {
-		t.Errorf("left on a collapsed User Story: %v", got)
-	}
-}
-
-func TestRightExpandsCollapsedUserStoryOnly(t *testing.T) {
-	tb := press(newTaskboard(), left)
-	if len(tb.Rows()) != 9 {
-		t.Fatalf("not collapsed: %v", refs(tb))
-	}
-
-	tb = press(tb, right)
-	if got := refs(tb); !slices.Equal(got, refs(newTaskboard())) {
-		t.Errorf("right: %v", got)
-	}
-	if got := refs(press(tb, down, right)); got[1] != "T#33*" || len(got) != 10 {
-		t.Errorf("right on a Task: %v", got)
-	}
-}
-
 func TestToggleCollapsesAndExpandsUserStory(t *testing.T) {
 	tb := press(newTaskboard(), down, down, toggle)
 	if got := refs(tb); len(got) != 8 || got[2] != "US#12*" {
@@ -240,7 +203,7 @@ func TestToggleOnTaskChangesNothing(t *testing.T) {
 }
 
 func TestGroupWithoutUserStoryCollapses(t *testing.T) {
-	tb := press(newTaskboard(), down, down, down, down, down, down, left)
+	tb := press(newTaskboard(), down, down, down, down, down, down, toggle)
 
 	if got := refs(tb); len(got) != 8 || got[7] != "US-*" {
 		t.Errorf("got %v", got)
@@ -251,7 +214,7 @@ func TestTaskboardMethodsNeverChangeTheReceiver(t *testing.T) {
 	tb := press(newTaskboard(), down)
 	before := refs(tb)
 
-	_ = press(tb, down, left, left, toggle, right)
+	_ = press(tb, down, toggle, up, toggle)
 
 	if got := refs(tb); !slices.Equal(got, before) {
 		t.Errorf("receiver changed to %v", got)
@@ -259,7 +222,7 @@ func TestTaskboardMethodsNeverChangeTheReceiver(t *testing.T) {
 }
 
 func TestTaskboardReloadKeepsCollapsedUserStoriesAndSelectedTask(t *testing.T) {
-	tb := press(newTaskboard(), left, down, down, down) // #15 collapsed, #31 selected
+	tb := press(newTaskboard(), toggle, down, down, down) // #15 collapsed, #31 selected
 	c := sprintContent
 	c.Tasks = append([]domain.Task{{ID: 906, Ref: 50, Title: "New", Status: 21, UserStory: 501}}, c.Tasks...)
 
@@ -292,7 +255,7 @@ func TestEmptyTaskboard(t *testing.T) {
 	if _, ok := tb.Detail(); ok {
 		t.Error("detail on an empty Taskboard")
 	}
-	if got := refs(press(tb, down, left, right, toggle)); len(got) != 0 {
+	if got := refs(press(tb, down, toggle)); len(got) != 0 {
 		t.Errorf("keys on an empty Taskboard: %v", got)
 	}
 	if newTaskboard().Empty() {
@@ -306,7 +269,7 @@ func TestTaskboardSelectedIndexMatchesSelectedRow(t *testing.T) {
 	if i := tb.SelectedIndex(); !tb.Rows()[i].Selected {
 		t.Errorf("index %d is not the selected row", i)
 	}
-	if !tb.TaskSelected() || press(tb, left).TaskSelected() {
+	if !tb.TaskSelected() || press(tb, up).TaskSelected() {
 		t.Error("TaskSelected wrong")
 	}
 }

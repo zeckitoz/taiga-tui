@@ -29,15 +29,15 @@ func taskboardKeys(tb board.Taskboard) []string {
 	if tb.Empty() {
 		return []string{"r refresh", ": menu", "? help"}
 	}
-	var keys []string
-	if tb.StatusSelected() {
-		keys = append(keys, "⇧←/→ status", "s pick", "a assign to me")
-	}
-	enter := "enter fold"
+	enter := "↵ fold"
 	if tb.TaskSelected() {
-		enter = "enter detail"
+		enter = "↵ detail"
 	}
-	return append(keys, "↑/↓ move", "←/→ fold", enter, "r refresh", ": menu", "? help")
+	keys := []string{"↑/↓ move", enter}
+	if tb.StatusSelected() {
+		keys = append(keys, "a assign to me", "s status")
+	}
+	return append(keys, "r refresh", ": menu", "? help")
 }
 
 // noSprintsKeys is the hint of a project without Sprints.

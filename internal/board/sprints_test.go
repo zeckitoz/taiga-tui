@@ -87,7 +87,7 @@ func TestOpeningSameSprintAgainRefreshesAndKeepsTaskboardState(t *testing.T) {
 	s, load := s.Open(sprint)
 	s, _ = s.TaskboardLoaded(load, sprintContent)
 	tb, _ := s.Taskboard()
-	s = s.WithTaskboard(press(tb, left, down)) // #15 collapsed, #12 selected
+	s = s.WithTaskboard(press(tb, toggle, down)) // #15 collapsed, #12 selected
 
 	s, refresh := s.Open(sprint)
 	if !refresh.Refresh {
@@ -106,7 +106,7 @@ func TestOpeningOtherSprintReplacesTaskboard(t *testing.T) {
 	s, load := s.Open(sprint)
 	s, _ = s.TaskboardLoaded(load, sprintContent)
 	tb, _ := s.Taskboard()
-	s = s.WithTaskboard(press(tb, left))
+	s = s.WithTaskboard(press(tb, toggle))
 
 	s, other := s.Open(sprint2)
 	if other.Refresh {
