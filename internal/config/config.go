@@ -47,6 +47,8 @@ type Config struct {
 	ShowVersion bool
 	// Logout is set by the logout subcommand.
 	Logout bool
+	// Debug is set by --debug and turns on the debug log.
+	Debug bool
 }
 
 // Host returns the host of InstanceURL, e.g. "taiga-fki.ostfalia.de". It
@@ -82,6 +84,7 @@ func Resolve(args []string, getenv func(string) string) (Config, []Warning, erro
 		ShowHelp:     fl.help,
 		ShowVersion:  fl.version,
 		Logout:       fl.logout,
+		Debug:        fl.debug,
 	}
 	if cfg.ShowHelp || cfg.ShowVersion {
 		return cfg, nil, nil
@@ -126,6 +129,7 @@ type flags struct {
 	help      bool
 	version   bool
 	logout    bool
+	debug     bool
 }
 
 func parseFlags(args []string) (flags, error) {
@@ -137,6 +141,7 @@ func parseFlags(args []string) (flags, error) {
 	fs.BoolVar(&fl.help, "help", false, "")
 	fs.BoolVar(&fl.help, "h", false, "")
 	fs.BoolVar(&fl.version, "version", false, "")
+	fs.BoolVar(&fl.debug, "debug", false, "")
 	if err := fs.Parse(args); err != nil {
 		return flags{}, &UsageError{err: err}
 	}

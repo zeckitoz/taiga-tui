@@ -51,7 +51,7 @@ func TestKanbanBoardShortensInactiveTabsWhenNarrow(t *testing.T) {
 }
 
 func TestKanbanColorsOfStatusTabsAndCursor(t *testing.T) {
-	h := onKanban(t, 100, 12)
+	h := onKanban(t, 100, 15)
 
 	h.ansiGolden("kanban")
 }
@@ -187,7 +187,7 @@ func TestKanbanListScrollsToKeepCursorVisible(t *testing.T) {
 }
 
 func TestEmptyStatusTabGolden(t *testing.T) {
-	h := onKanban(t, 100, 12)
+	h := onKanban(t, 100, 15)
 
 	h.key("l")
 

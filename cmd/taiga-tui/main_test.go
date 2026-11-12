@@ -3,8 +3,12 @@ package main
 import (
 	"bytes"
 	"errors"
+	"io"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"strings"
 	"testing"
@@ -12,6 +16,7 @@ import (
 	"github.com/zalando/go-keyring"
 
 	"github.com/zeckitoz/taiga-tui/internal/config"
+	"github.com/zeckitoz/taiga-tui/internal/crash"
 	"github.com/zeckitoz/taiga-tui/internal/ui"
 	"github.com/zeckitoz/taiga-tui/internal/version"
 )
@@ -57,6 +62,8 @@ Flags:
   --instance URL     Taiga instance URL (env TAIGA_TUI_INSTANCE,
                      default https://taiga-fki.ostfalia.de)
   --config-dir DIR   Directory for all files of taiga-tui (env TAIGA_TUI_CONFIG_DIR)
+  --debug            Write requests and responses, without tokens and
+                     password, to debug.log in the config directory
   --version          Print the version and exit
   -h, --help         Show this help and exit
 
@@ -231,5 +238,156 @@ func writeFile(t *testing.T, dir, name, content string) {
 	t.Helper()
 	if err := os.WriteFile(filepath.Join(dir, name), []byte(content), 0o600); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestDebugWritesRedactedTrafficToDebugLog(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = io.WriteString(w, `{"id": 42, "username": "alice", "full_name_display": "Alice", "auth_token": "access-secret", "refresh": "refresh-secret"}`)
+	}))
+	defer srv.Close()
+	dir := t.TempDir()
+	var deps ui.Deps
+	stubTUI(t, func(d ui.Deps) error {
+		deps = d
+		_, err := d.Session.Authenticate(t.Context(), "alice", "pw-secret")
+		return err
+	})
+
+	res := runWith(t, map[string]string{"TAIGA_TUI_CONFIG_DIR": dir, "TAIGA_TUI_INSTANCE": srv.URL}, "--debug")
+	if res.code != 0 || res.stderr != "" {
+		t.Fatalf("exit %d, stderr %q", res.code, res.stderr)
+	}
+
+	logPath := filepath.Join(dir, "debug.log")
+	if deps.DebugLog != logPath {
+		t.Errorf("Deps.DebugLog %q, want %q", deps.DebugLog, logPath)
+	}
+	data, err := os.ReadFile(logPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := string(data)
+	if first, _, _ := strings.Cut(got, "\n"); first != version.Current().String() {
+		t.Errorf("first line %q, want the version line", first)
+	}
+	if !strings.Contains(got, "POST "+srv.URL+"/api/v1/auth") {
+		t.Errorf("request not logged:\n%s", got)
+	}
+	for _, secret := range []string{"pw-secret", "access-secret", "refresh-secret"} {
+		if strings.Contains(got, secret) {
+			t.Errorf("debug.log contains %q:\n%s", secret, got)
+		}
+	}
+}
+
+func TestWithoutDebugNothingIsLogged(t *testing.T) {
+	dir := t.TempDir()
+	var deps ui.Deps
+	stubTUI(t, func(d ui.Deps) error { deps = d; return nil })
+
+	runWith(t, map[string]string{"TAIGA_TUI_CONFIG_DIR": dir})
+
+	if deps.DebugLog != "" {
+		t.Errorf("Deps.DebugLog %q", deps.DebugLog)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "debug.log")); !errors.Is(err, os.ErrNotExist) {
+		t.Errorf("debug.log exists: %v", err)
+	}
+}
+
+func TestDebugLogThatCannotBeOpenedExitsWithError(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.Mkdir(filepath.Join(dir, "debug.log"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	stubTUI(t, func(ui.Deps) error { t.Error("TUI started"); return nil })
+
+	res := runWith(t, map[string]string{"TAIGA_TUI_CONFIG_DIR": dir}, "--debug")
+
+	if res.code != 1 || !strings.Contains(res.stderr, "debug.log") {
+		t.Errorf("exit %d, stderr %q", res.code, res.stderr)
+	}
+}
+
+const fakeJWT = "eyJhbGciOiJIUzI1NiJ9.eyJ1c2VyIjo0Mn0.c2lnbmF0dXJl"
+
+func TestPanicWritesCrashLogAndExitsWithOne(t *testing.T) {
+	dir := t.TempDir()
+	stubTUI(t, func(ui.Deps) error { panic("kaboom with token " + fakeJWT) })
+
+	res := runWith(t, map[string]string{"TAIGA_TUI_CONFIG_DIR": dir})
+
+	logPath := filepath.Join(dir, "crash.log")
+	if res.code != 1 {
+		t.Errorf("exit code %d, want 1", res.code)
+	}
+	if want := "taiga-tui crashed. Details written to " + logPath + "\n"; res.stderr != want {
+		t.Errorf("stderr %q, want %q", res.stderr, want)
+	}
+	data, err := os.ReadFile(logPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := string(data)
+	if first, _, _ := strings.Cut(got, "\n"); first != version.Current().String() {
+		t.Errorf("first line %q, want the version line", first)
+	}
+	for _, want := range []string{"OS: " + runtime.GOOS + "/" + runtime.GOARCH, "kaboom with token", "goroutine ", "TestPanicWritesCrashLogAndExitsWithOne"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("crash.log lacks %q:\n%s", want, got)
+		}
+	}
+	if strings.Contains(got, fakeJWT) {
+		t.Errorf("crash.log contains a token:\n%s", got)
+	}
+}
+
+func TestCrashReportedByTUIWritesCrashLog(t *testing.T) {
+	dir := t.TempDir()
+	stubTUI(t, func(ui.Deps) error {
+		return &crash.Error{Value: "from a command", Stack: []byte("goroutine 7 [running]:\nmain.work()\n")}
+	})
+
+	res := runWith(t, map[string]string{"TAIGA_TUI_CONFIG_DIR": dir})
+
+	if res.code != 1 || !strings.HasPrefix(res.stderr, "taiga-tui crashed. Details written to ") {
+		t.Errorf("exit %d, stderr %q", res.code, res.stderr)
+	}
+	data, err := os.ReadFile(filepath.Join(dir, "crash.log"))
+	if err != nil || !strings.Contains(string(data), "from a command") || !strings.Contains(string(data), "main.work()") {
+		t.Errorf("crash.log %q, %v", data, err)
+	}
+}
+
+func TestCrashLogIsOverwritten(t *testing.T) {
+	dir := t.TempDir()
+	env := map[string]string{"TAIGA_TUI_CONFIG_DIR": dir}
+	stubTUI(t, func(ui.Deps) error { panic("first crash") })
+	runWith(t, env)
+	stubTUI(t, func(ui.Deps) error { panic("second crash") })
+
+	runWith(t, env)
+
+	data, err := os.ReadFile(filepath.Join(dir, "crash.log"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := string(data); strings.Contains(got, "first crash") || !strings.Contains(got, "second crash") {
+		t.Errorf("crash.log:\n%s", got)
+	}
+}
+
+func TestCrashLogThatCannotBeWrittenStillReportsThePanic(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.Mkdir(filepath.Join(dir, "crash.log"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	stubTUI(t, func(ui.Deps) error { panic("kaboom") })
+
+	res := runWith(t, map[string]string{"TAIGA_TUI_CONFIG_DIR": dir})
+
+	if res.code != 1 || !strings.Contains(res.stderr, "taiga-tui crashed") || !strings.Contains(res.stderr, "kaboom") {
+		t.Errorf("exit %d, stderr %q", res.code, res.stderr)
 	}
 }

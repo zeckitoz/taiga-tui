@@ -281,11 +281,11 @@ func TestFootersAndHelpNameStatusChange(t *testing.T) {
 }
 
 func TestSavingRowsGolden(t *testing.T) {
-	h := onKanban(t, 100, 12)
+	h := onKanban(t, 100, 15)
 	h.pickStatusOnly("ready")
 	h.golden("kanban_saving")
 
-	tb := onTaskboard(t, 100, 14)
+	tb := onTaskboard(t, 100, 15)
 	tb.pickStatusOnly("ready") // #12
 	tb.key("j")
 	tb.pickStatusOnly("ready for test") // #31
