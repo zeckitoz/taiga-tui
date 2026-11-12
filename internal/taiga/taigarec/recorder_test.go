@@ -39,6 +39,11 @@ type staticToken string
 
 func (s staticToken) Token(context.Context) (string, error) { return string(s), nil }
 
+// Refresh fails like a rejected refresh token: a staticToken cannot be renewed.
+func (s staticToken) Refresh(context.Context, string) (string, error) {
+	return "", taiga.ErrSessionExpired
+}
+
 func readDir(t *testing.T, dir string) map[string]string {
 	t.Helper()
 	entries, err := os.ReadDir(dir)

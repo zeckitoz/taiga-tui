@@ -9,6 +9,7 @@ require (
 	github.com/BurntSushi/toml v1.6.0
 	github.com/charmbracelet/colorprofile v0.4.3
 	github.com/charmbracelet/x/ansi v0.11.9
+	github.com/gofrs/flock v0.13.1
 	github.com/zalando/go-keyring v0.2.8
 )
 

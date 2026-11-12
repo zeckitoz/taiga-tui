@@ -105,7 +105,7 @@ func (a App) savedResult(msg savedMsg) (tea.Model, tea.Cmd) {
 		return a, nil
 	}
 	if errors.Is(msg.err, taiga.ErrSessionExpired) {
-		return a.showLogin(), nil
+		return a.sessionExpired(), nil
 	}
 	// Off the board, e.g. in a picker, the board reloads when it opens again.
 	if msg.err != nil && a.screen == screenBoard {

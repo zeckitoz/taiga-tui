@@ -7,9 +7,14 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/gofrs/flock"
 
 	"github.com/zeckitoz/taiga-tui/internal/taiga"
 )
@@ -17,7 +22,16 @@ import (
 // Authenticator is the part of taiga.AuthAPI the Manager needs.
 type Authenticator interface {
 	Login(ctx context.Context, username, password string) (taiga.LoginResult, error)
+	Refresh(ctx context.Context, refresh string) (taiga.Tokens, error)
 }
+
+// RefreshLockName is the name of the lock file inside the config directory
+// that serializes the token refreshes of all instances of the app.
+const RefreshLockName = "refresh.lock"
+
+// lockPollInterval is how often a refresh retries while another instance
+// holds the lock.
+const lockPollInterval = 20 * time.Millisecond
 
 // Options configures a Manager.
 type Options struct {
@@ -37,6 +51,10 @@ type Manager struct {
 	host string
 	auth Authenticator
 	now  func() time.Time
+
+	// refreshMu orders the refreshes of this process; the lock file does so
+	// across processes.
+	refreshMu sync.Mutex
 
 	mu          sync.Mutex
 	keyring     CredentialStore
@@ -74,10 +92,15 @@ const (
 func (m *Manager) Save(res taiga.LoginResult) (Saved, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	username := res.Member.Username
+	return m.store(res.Member.Username, res.Tokens)
+}
+
+// store writes the tokens of username to the keyring, or to the file if the
+// keyring fails, and makes username the active session. The caller holds mu.
+func (m *Manager) store(username string, tokens taiga.Tokens) (Saved, error) {
 	entries := []struct{ key, value string }{
-		{m.key(username, accessToken), res.Tokens.Access},
-		{m.key(username, refreshToken), res.Tokens.Refresh},
+		{m.key(username, accessToken), tokens.Access},
+		{m.key(username, refreshToken), tokens.Refresh},
 	}
 
 	if !m.keyringDown {
@@ -107,36 +130,99 @@ func (m *Manager) Save(res taiga.LoginResult) (Saved, error) {
 	return Saved{File: m.file.Path()}, nil
 }
 
-// Resume reports whether an unexpired access token is stored for username.
+// Resume reports whether a session can be continued for username: an
+// unexpired access token is stored, or an unexpired refresh token that renews it.
 func (m *Manager) Resume(username string) bool {
 	if username == "" {
 		return false
 	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	if _, ok := m.validAccessToken(username); !ok {
+	_, accessOK := m.validToken(username, accessToken)
+	_, refreshOK := m.validToken(username, refreshToken)
+	if !accessOK && !refreshOK {
 		return false
 	}
 	m.username = username
 	return true
 }
 
-// Token returns the unexpired access token of the active session, which
-// Resume or Save started. It implements taiga.TokenSource.
-func (m *Manager) Token(context.Context) (string, error) {
+// Token returns the access token of the active session, which Resume or Save
+// started. If it has expired it is renewed first. It implements
+// taiga.TokenSource.
+func (m *Manager) Token(ctx context.Context) (string, error) {
 	m.mu.Lock()
-	defer m.mu.Unlock()
-	if token, ok := m.validAccessToken(m.username); ok {
+	token, ok := m.validToken(m.username, accessToken)
+	stale, _ := m.get(m.key(m.username, accessToken))
+	m.mu.Unlock()
+	if ok {
 		return token, nil
 	}
-	return "", taiga.ErrSessionExpired
+	return m.Refresh(ctx, stale)
 }
 
-func (m *Manager) validAccessToken(username string) (string, bool) {
+// Refresh returns a new access token after stale was rejected or has expired.
+// It implements taiga.TokenSource.
+//
+// Taiga rotates refresh tokens, so refreshing the same token twice would log
+// the session out. Refresh therefore holds the refresh lock, re-reads the
+// stored tokens, and returns the stored access token without calling Taiga if
+// another instance rotated the tokens in the meantime. A refresh token that
+// Taiga rejects, or none at all, yields taiga.ErrSessionExpired.
+func (m *Manager) Refresh(ctx context.Context, stale string) (string, error) {
+	m.refreshMu.Lock()
+	defer m.refreshMu.Unlock()
+	unlock, err := m.lockRefresh(ctx)
+	if err != nil {
+		return "", err
+	}
+	defer unlock()
+
+	m.mu.Lock()
+	username := m.username
+	access, accessOK := m.validToken(username, accessToken)
+	refresh, refreshErr := m.get(m.key(username, refreshToken))
+	m.mu.Unlock()
+	if accessOK && access != stale {
+		return access, nil
+	}
+	if username == "" || refreshErr != nil || refresh == "" {
+		return "", taiga.ErrSessionExpired
+	}
+
+	tokens, err := m.auth.Refresh(ctx, refresh)
+	if err != nil {
+		return "", err
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if _, err := m.store(username, tokens); err != nil {
+		return "", fmt.Errorf("storing the renewed login: %w", err)
+	}
+	return tokens.Access, nil
+}
+
+// lockRefresh takes the lock file shared by all instances of the app on this
+// instance's config directory and returns the function that releases it.
+func (m *Manager) lockRefresh(ctx context.Context) (func(), error) {
+	dir := filepath.Dir(m.file.Path())
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return nil, err
+	}
+	lock := flock.New(filepath.Join(dir, RefreshLockName))
+	if _, err := lock.TryLockContext(ctx, lockPollInterval); err != nil {
+		return nil, err
+	}
+	return func() { _ = lock.Unlock() }, nil
+}
+
+// validToken returns the stored token of the given kind if it has not
+// expired.
+func (m *Manager) validToken(username, kind string) (string, bool) {
 	if username == "" {
 		return "", false
 	}
-	token, err := m.get(m.key(username, accessToken))
+	token, err := m.get(m.key(username, kind))
 	if err != nil {
 		return "", false
 	}

@@ -164,10 +164,13 @@ type statusMsg struct {
 
 // App is the root model.
 type App struct {
-	deps    Deps
-	state   config.State
-	screen  screen
-	form    loginForm
+	deps   Deps
+	state  config.State
+	screen screen
+	form   loginForm
+	// relogin shows the login dialog over the board after the session
+	// expired, with the form in form.
+	relogin bool
 	spinner spinner
 	// saving turns on the rows whose Status Change is being saved, and
 	// refresh the header while a board reloads.
@@ -350,6 +353,9 @@ func (a App) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			a.form.fail("Couldn't save login: " + msg.err.Error())
 			return a, nil
 		}
+		if a.relogin {
+			return a.reloggedIn(msg)
+		}
 		return a.loggedIn(msg).loadMe()
 	case meLoadedMsg:
 		if msg.err != nil {
@@ -376,6 +382,7 @@ func (a App) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case userStoryLoadedMsg:
 		// The board drops results of earlier loads and other projects.
 		if msg.err != nil {
+			a = a.expireOn(msg.err)
 			a.kanban = a.kanban.UserStoryFailed(msg.load, msg.err)
 		} else {
 			a.kanban = a.kanban.UserStoryLoaded(msg.load, msg.story)
@@ -387,6 +394,9 @@ func (a App) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a.taskboardLoaded(msg)
 	case taskLoadedMsg:
 		// The board drops results of earlier loads and other Sprints.
+		if msg.err != nil {
+			a = a.expireOn(msg.err)
+		}
 		return a.withTaskboard(func(tb board.Taskboard) board.Taskboard {
 			if msg.err != nil {
 				return tb.TaskFailed(msg.load, msg.err)
@@ -397,7 +407,8 @@ func (a App) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return a.savedResult(msg)
 	case userStoryReloadedMsg:
 		if msg.err != nil {
-			return a, nil // the next refresh corrects the User Story
+			// The next refresh corrects the User Story.
+			return a.expireOn(msg.err), nil
 		}
 		// The board drops results for other Sprints.
 		return a.withTaskboard(func(tb board.Taskboard) board.Taskboard {
@@ -426,6 +437,9 @@ func (a App) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case screenSprintPicker:
 		return a.clearTransient(msg).updateSprintPicker(msg)
 	case screenBoard:
+		if a.relogin {
+			return a.updateLogin(msg)
+		}
 		return a.clearTransient(msg).updateBoard(msg)
 	}
 	return a, nil
@@ -454,10 +468,66 @@ func (a App) showLogin() App {
 	return a
 }
 
+// showRelogin opens the login dialog over the board. Whatever waited for an
+// answer or a result is dropped, and the Team Member repeats it after logging
+// in.
+func (a App) showRelogin() App {
+	a.asked = nil
+	a.paletteOpen = false
+	a.relogin = true
+	a.form = newLoginForm(a.deps.Host, a.state.Login, a.deps.Tick)
+	a.form.expired = true
+	a.form.setWidth(a.width)
+	return a
+}
+
+// sessionExpired reacts to a session that Taiga no longer accepts: on the
+// board the login opens over it, anywhere else it takes the whole screen. An
+// open dialog stays as it is.
+func (a App) sessionExpired() App {
+	switch {
+	case a.relogin:
+		return a
+	case a.screen == screenBoard:
+		return a.showRelogin()
+	}
+	return a.showLogin()
+}
+
+// expireOn opens the login if err says that the session expired.
+func (a App) expireOn(err error) App {
+	if errors.Is(err, taiga.ErrSessionExpired) {
+		return a.sessionExpired()
+	}
+	return a
+}
+
+// reloggedIn closes the login dialog after the Team Member logged in again.
+// The same Team Member gets the board reloaded and is asked to repeat the
+// interrupted action; another one starts over, as after any login.
+func (a App) reloggedIn(msg saveDoneMsg) (tea.Model, tea.Cmd) {
+	sameMember := msg.result.Member.ID == a.me.ID
+	a = a.loggedIn(msg)
+	a.relogin = false
+	if !sameMember {
+		return a.loadMe()
+	}
+	a.status = append(a.status, statusMsg{text: "Session renewed, board reloaded - please repeat your action", hint: true})
+	a.scrollBoard() // the status line takes rows from the list
+	return a.shownBoard().reload(a)
+}
+
 func (a App) updateLogin(msg tea.Msg) (tea.Model, tea.Cmd) {
 	action, cmd := a.form.update(msg)
 	switch action {
 	case formCancel:
+		if a.relogin {
+			// The board stays visible; the next action that needs the
+			// session opens the dialog again.
+			a.relogin = false
+			a.form = loginForm{}
+			return a, nil
+		}
 		// The login is the first screen, so canceling it ends the app.
 		return a, tea.Quit
 	case formSubmit:
@@ -501,13 +571,14 @@ func (a App) startLoading(text string, cmd tea.Cmd) (App, tea.Cmd) {
 	return a, tea.Batch(a.spinner.start(), cmd)
 }
 
-// failed handles a failed load: an expired session leads to the login,
+// failed handles a failed load: an expired session leads to the login, over
+// the board if it is shown,
 // anything else to a full-page error "<what>: <reason>" from which retry
 // repeats the load.
 func (a App) failed(err error, what string, retry func(App) (App, tea.Cmd)) (tea.Model, tea.Cmd) {
 	a.spinner.stop()
 	if errors.Is(err, taiga.ErrSessionExpired) {
-		return a.showLogin(), nil
+		return a.sessionExpired(), nil
 	}
 	a.screen = screenFailed
 	a.failure = what + ": " + reason(err)
@@ -1266,6 +1337,12 @@ func (a App) View() tea.View {
 		if a.paletteOpen {
 			boxW, _ := paletteBox(a.width, 0)
 			body = overlay(body, a.palette.view(a.width, a.bodyHeight()), (a.width-boxW)/2, paletteTop)
+		}
+		if a.relogin {
+			dialog := a.form.view()
+			x := max(0, (a.width-lipgloss.Width(dialog))/2)
+			y := max(0, (a.bodyHeight()-lipgloss.Height(dialog))/2)
+			body = overlay(body, dialog, x, y)
 		}
 		content = a.framed(a.boardPath(), body)
 	default:
