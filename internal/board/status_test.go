@@ -236,7 +236,7 @@ func TestTaskboardUserStoryStatusChangeUsesUserStoryStatuses(t *testing.T) {
 	if d, _ := tb.Detail(); d.Status.Name != "Done" {
 		t.Errorf("detail status %q", d.Status.Name)
 	}
-	if row := tb.Rows()[2]; !row.Selected || !row.Saving {
+	if row := tb.Rows()[2]; !row.Selected || !row.Saving || row.Status.Name != "Done" {
 		t.Errorf("row %+v", row)
 	}
 	if _, ok := tb.UserStorySaved(save, domain.UserStory{ID: 501, Ref: 12, Title: "Checkout", Status: 4, SprintOrder: 2, Version: 1}); !ok {
@@ -398,5 +398,16 @@ func TestBoardsTakeItemsSavedWhileTheyWereLeft(t *testing.T) {
 	}
 	if k := board.NewKanban(project, stories, me).Replace(domain.UserStory{ID: 99, Status: 1}); k.Tabs()[0].Count != 3 {
 		t.Error("took a User Story the board does not show")
+	}
+}
+
+func TestTaskboardUserStoryRowRevertsStatusWhenSaveFails(t *testing.T) {
+	tb := press(newTaskboard(), down, down) // US#12, In progress
+	tb, save := changeTaskboard(t, tb, board.Next)
+
+	tb, _, ok := tb.StatusNotSaved(save, board.SaveFailed)
+
+	if row := tb.Rows()[2]; !ok || row.Saving || row.Status.Name != "In progress" {
+		t.Errorf("row %+v", row)
 	}
 }

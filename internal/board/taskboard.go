@@ -67,8 +67,10 @@ type TaskboardRow struct {
 	// in a closed Status as done.
 	Expanded bool
 	Tasks    domain.TaskProgress
-	// Status, Assignees and Mine describe a Task row. Status is the zero
-	// Status if it is unknown.
+	// Status is the Status of a Task or User Story row, with the Status
+	// being saved applied. It is the zero Status if it is unknown, and for
+	// the group of Tasks without User Story. Assignees and Mine describe a
+	// Task row.
 	Status    domain.Status
 	Assignees []Assignee
 	Mine      bool
@@ -257,6 +259,9 @@ func (t Taskboard) Rows() []TaskboardRow {
 				Title:    gr.userStory.Title,
 				Expanded: !t.collapsed[gr.userStory.ID],
 				Tasks:    t.progress(gr.tasks),
+			}
+			if gr.userStory.ID != 0 {
+				rows[i].Status = statusByID(t.project.UserStoryStatuses, gr.userStory.Status)
 			}
 		case RowTask:
 			task := gr.tasks[it.task]

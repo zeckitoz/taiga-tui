@@ -575,3 +575,48 @@ func TestPickedProjectFallsBackWithoutHint(t *testing.T) {
 		t.Errorf("board %q:\n%s", h.app.board, h.plainView())
 	}
 }
+
+func TestTaskboardAt120x40And80x30And60x15(t *testing.T) {
+	for _, size := range [][2]int{{120, 40}, {80, 30}, {60, 15}} {
+		h := onTaskboard(t, size[0], size[1])
+
+		h.golden(fmt.Sprintf("taskboard_%dx%d", size[0], size[1]))
+	}
+}
+
+func TestTaskboardUserStoryRowsAlignStatusWithTasksAndDropBarBeforeTitle(t *testing.T) {
+	rows := []board.TaskboardRow{
+		{Kind: board.RowUserStory, ID: 1, Ref: 12, Title: "Checkout with credit card", Expanded: true,
+			Status: domain.Status{ID: 2, Name: "In progress"}, Tasks: domain.TaskProgress{Done: 1, Total: 2}},
+		{Kind: board.RowTask, ID: 2, Ref: 31, Title: "Validate", Status: domain.Status{ID: 3, Name: "Closed"},
+			Assignees: []board.Assignee{{Name: "Alice Example", Initials: "AE"}}},
+		{Kind: board.RowUserStory, Expanded: true, Tasks: domain.TaskProgress{Done: 0, Total: 1}},
+	}
+	for _, tt := range []struct {
+		w       int
+		wantBar bool
+	}{{80, true}, {54, false}} {
+		lines := strings.Split(ansi.Strip(taskList(rows, 0, tt.w, 5, "")), "\n")
+
+		story, task, group := lines[0], lines[1], lines[3]
+		col := func(line, s string) int {
+			before, _, found := strings.Cut(line, s)
+			if !found {
+				t.Fatalf("w=%d: %q not in %q", tt.w, s, line)
+			}
+			return ansi.StringWidth(before)
+		}
+		if got, want := col(story, "● In progress"), col(task, "● Closed"); got != want {
+			t.Errorf("w=%d: Status at %d, Task Status at %d:\n%s", tt.w, got, want, strings.Join(lines, "\n"))
+		}
+		if got := strings.Contains(story, "▰"); got != tt.wantBar {
+			t.Errorf("w=%d: bar %v:\n%s", tt.w, got, story)
+		}
+		if !strings.Contains(story, "Checkout with credit card") || !strings.Contains(story, "1/2") {
+			t.Errorf("w=%d: title or count lost:\n%s", tt.w, story)
+		}
+		if strings.Contains(group, "●") {
+			t.Errorf("w=%d: group without User Story has a Status: %q", tt.w, group)
+		}
+	}
+}

@@ -1,0 +1,15 @@
+ Web Shop › Taskboard › Sprint 4  current     Alice Example |
+ ▾ #12 Checkout with credit card     ● New           ▰▱ 1/2 |
+  ▍ #31 Validate card number         ● In progress  AE      |
+    #32 Redirect to 3-D Secure and…  ● Closed       BK      |
+────────────────────────────────────────────────────────────|
+ #12 Checkout with credit card                              |
+ Status     ● New                                           |
+ Assignees  Bea Koch, Alice Example (you)                   |
+ Tasks      ▰▱ 1/2                                          |
+                                                            |
+ ● In progress    1                                         |
+ ● Closed         1                                         |
+                                                            |
+                                                            |
+ ⇧←/→ status · ↑/↓ move · ←/→ fold · : menu · ? help        |
