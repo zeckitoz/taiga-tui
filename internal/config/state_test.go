@@ -9,6 +9,7 @@ import (
 	"runtime"
 	"slices"
 	"testing"
+	"time"
 
 	"github.com/zeckitoz/taiga-tui/internal/config"
 	"github.com/zeckitoz/taiga-tui/internal/domain"
@@ -161,5 +162,32 @@ func TestStateWithoutSprintForgetsSprintWithoutChangingReceiver(t *testing.T) {
 	}
 	if len(old.Sprints) != 2 {
 		t.Errorf("receiver changed to %v", old.Sprints)
+	}
+}
+
+func TestStateLoggedInKeepsUpdateCheckOfOtherUser(t *testing.T) {
+	checked := time.Date(2026, 11, 12, 8, 0, 0, 0, time.UTC)
+	old := config.State{UserID: 42, DefaultProject: 9, UpdateCheckedAt: checked, UpdateVersion: "v0.4.0"}
+	m := domain.TeamMember{ID: 7, Username: "bob", FullName: "Bob"}
+
+	got := old.LoggedIn(m, "bob")
+
+	want := config.State{UserID: 7, Username: "bob", Login: "bob", FullName: "Bob", UpdateCheckedAt: checked, UpdateVersion: "v0.4.0"}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("got  %+v\nwant %+v", got, want)
+	}
+}
+
+func TestStateFileRoundTripsUpdateCheck(t *testing.T) {
+	f := config.NewStateFile(t.TempDir())
+	checked := time.Date(2026, 11, 12, 8, 0, 0, 0, time.UTC)
+
+	if err := f.Save(config.State{UpdateCheckedAt: checked, UpdateVersion: "v0.4.0"}); err != nil {
+		t.Fatal(err)
+	}
+	got, warnings := f.Load()
+
+	if len(warnings) != 0 || !got.UpdateCheckedAt.Equal(checked) || got.UpdateVersion != "v0.4.0" {
+		t.Errorf("got %+v, %v", got, warnings)
 	}
 }

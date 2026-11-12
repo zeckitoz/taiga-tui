@@ -18,6 +18,7 @@ import (
 	"github.com/zeckitoz/taiga-tui/internal/domain"
 	"github.com/zeckitoz/taiga-tui/internal/session"
 	"github.com/zeckitoz/taiga-tui/internal/taiga"
+	updates "github.com/zeckitoz/taiga-tui/internal/update"
 )
 
 // Session is the part of session.Manager the UI uses.
@@ -65,6 +66,13 @@ type Deps struct {
 	// Now tells the time, whose date in its location decides the Current
 	// Sprint. It replaces time.Now in tests.
 	Now func() time.Time
+	// Version is the version of the running binary. Update hints compare
+	// against it.
+	Version string
+	// CheckUpdate asks for the tag of the latest release. Nil turns the
+	// update check off. It runs in the background and its errors are
+	// ignored.
+	CheckUpdate func(ctx context.Context) (string, error)
 }
 
 type screen int
@@ -109,6 +117,12 @@ type (
 		login  string
 		saved  session.Saved
 		err    error
+	}
+	// updateCheckedMsg is the result of the update check, err nil if it
+	// found version.
+	updateCheckedMsg struct {
+		version string
+		err     error
 	}
 	meLoadedMsg struct {
 		me  domain.TeamMember
@@ -179,6 +193,8 @@ type statusMsg struct {
 	// with the next action.
 	transient bool
 	hint      bool
+	// update marks the hint about a newer release.
+	update bool
 }
 
 // App is the root model.
@@ -275,7 +291,47 @@ func New(d Deps) App {
 	if d.DebugLog != "" {
 		a.status = append(a.status, statusMsg{text: "Debug log: " + d.DebugLog})
 	}
+	if d.CheckUpdate != nil {
+		a = a.withUpdateHint()
+	}
 	return a
+}
+
+// releasesURL is where the update hint points to.
+const releasesURL = "github.com/zeckitoz/taiga-tui/releases"
+
+// withUpdateHint shows the hint about the release found by the last update
+// check if it is newer than the running binary, and no hint otherwise.
+func (a App) withUpdateHint() App {
+	a.status = slices.DeleteFunc(slices.Clone(a.status), func(s statusMsg) bool { return s.update })
+	if found := a.state.UpdateVersion; updates.Newer(a.deps.Version, found) {
+		a.status = append(a.status, statusMsg{text: found + " available - see " + releasesURL, update: true})
+	}
+	return a
+}
+
+// checkUpdate returns the command running the update check, nil if the check
+// is off or not due yet.
+func (a App) checkUpdate() tea.Cmd {
+	check := a.deps.CheckUpdate
+	if check == nil || !updates.Due(a.state.UpdateCheckedAt, a.deps.Now()) {
+		return nil
+	}
+	return func() tea.Msg {
+		v, err := check(context.Background())
+		return updateCheckedMsg{version: v, err: err}
+	}
+}
+
+// updateChecked remembers the result of the update check. A failed check
+// stays silent and counts as done, so that a day without network does not
+// make every start try again.
+func (a App) updateChecked(msg updateCheckedMsg) App {
+	a.state.UpdateCheckedAt = a.deps.Now()
+	if msg.err == nil {
+		a.state.UpdateVersion = msg.version
+	}
+	return a.withUpdateHint().saveState()
 }
 
 // Init implements tea.Model.
@@ -284,6 +340,7 @@ func (a App) Init() tea.Cmd {
 	return tea.Batch(
 		func() tea.Msg { return resumeDoneMsg{ok: sess.Resume(username)} },
 		a.deps.Tick(keyringSlowDelay, func(time.Time) tea.Msg { return keyringSlowMsg{} }),
+		a.checkUpdate(),
 	)
 }
 
@@ -361,6 +418,8 @@ func (a App) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		a.keyringIsSlow = true
 		return a, a.spinner.start()
+	case updateCheckedMsg:
+		return a.updateChecked(msg), nil
 	case resumeDoneMsg:
 		a.spinner.stop()
 		if msg.ok {

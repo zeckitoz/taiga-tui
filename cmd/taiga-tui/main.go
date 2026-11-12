@@ -3,6 +3,7 @@
 package main
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -17,6 +18,7 @@ import (
 	"github.com/zeckitoz/taiga-tui/internal/session"
 	"github.com/zeckitoz/taiga-tui/internal/taiga"
 	"github.com/zeckitoz/taiga-tui/internal/ui"
+	"github.com/zeckitoz/taiga-tui/internal/update"
 	"github.com/zeckitoz/taiga-tui/internal/version"
 )
 
@@ -79,6 +81,11 @@ func run(args []string, getenv func(string) string, stdout, stderr io.Writer) in
 		return logout(sess, host, state, warnings, stdout, stderr)
 	}
 
+	var checkUpdate func(context.Context) (string, error)
+	if cfg.CheckUpdates {
+		checkUpdate = (&update.Checker{}).Latest
+	}
+
 	err = crash.Capture(func() error {
 		return runTUI(ui.Deps{
 			Host:         host,
@@ -88,6 +95,8 @@ func run(args []string, getenv func(string) string, stdout, stderr io.Writer) in
 			InitialState: state,
 			Warnings:     warnings,
 			DebugLog:     debugLog,
+			Version:      version.Current().Version,
+			CheckUpdate:  checkUpdate,
 		})
 	})
 	if c, ok := errors.AsType[*crash.Error](err); ok {

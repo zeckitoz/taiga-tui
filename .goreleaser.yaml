@@ -1,0 +1,96 @@
+# GoReleaser config. The release workflow pins the GoReleaser version, see
+# .github/workflows/release.yml.
+version: 2
+
+project_name: taiga-tui
+
+before:
+  hooks:
+    - go mod verify
+
+builds:
+  - id: taiga-tui
+    main: ./cmd/taiga-tui
+    binary: taiga-tui
+    env:
+      - CGO_ENABLED=0
+    goos: [linux, darwin, windows]
+    goarch: [amd64, arm64]
+    flags:
+      - -trimpath
+    ldflags:
+      - -s -w
+      - -X github.com/zeckitoz/taiga-tui/internal/version.version={{ .Tag }}
+      - -X github.com/zeckitoz/taiga-tui/internal/version.commit={{ .FullCommit }}
+      - -X github.com/zeckitoz/taiga-tui/internal/version.date={{ .CommitDate }}
+    mod_timestamp: "{{ .CommitTimestamp }}"
+
+# One binary for Intel and Apple Silicon Macs, replacing the two darwin builds.
+universal_binaries:
+  - replace: true
+
+archives:
+  - id: default
+    formats: [tar.gz]
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    format_overrides:
+      - goos: windows
+        formats: [zip]
+    files:
+      - LICENSE
+      - README.md
+
+nfpms:
+  - id: packages
+    package_name: taiga-tui
+    file_name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    homepage: https://github.com/zeckitoz/taiga-tui
+    description: Keyboard-driven terminal UI for Taiga Taskboards and Kanban Boards.
+    license: MIT
+    maintainer: zeckitoz <noreply@github.com>
+    formats: [deb, rpm]
+
+checksum:
+  name_template: checksums.txt
+  algorithm: sha256
+
+changelog:
+  use: github
+  sort: asc
+  filters:
+    exclude:
+      - "^Merge pull request"
+
+# Tags with a "-" (v0.4.0-rc.1) are pre-releases. They get a GitHub
+# pre-release and no update of the tap or the bucket.
+release:
+  prerelease: auto
+  name_template: "{{ .Tag }}"
+
+homebrew_casks:
+  - name: taiga-tui
+    homepage: https://github.com/zeckitoz/taiga-tui
+    description: Keyboard-driven terminal UI for Taiga Taskboards and Kanban Boards.
+    skip_upload: auto
+    repository:
+      owner: zeckitoz
+      name: homebrew-tap
+      token: "{{ .Env.TAP_GITHUB_TOKEN }}"
+    # The binary is not notarized, so macOS would quarantine the download.
+    hooks:
+      post:
+        install_steps: |
+          on_macos do
+            run "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "{{ .StagedPath }}/taiga-tui"]
+          end
+
+scoops:
+  - name: taiga-tui
+    homepage: https://github.com/zeckitoz/taiga-tui
+    description: Keyboard-driven terminal UI for Taiga Taskboards and Kanban Boards.
+    license: MIT
+    skip_upload: auto
+    repository:
+      owner: zeckitoz
+      name: scoop-bucket
+      token: "{{ .Env.TAP_GITHUB_TOKEN }}"
