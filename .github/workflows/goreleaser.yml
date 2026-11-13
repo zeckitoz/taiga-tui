@@ -29,12 +29,15 @@ jobs:
           distribution: goreleaser
           version: v2.20.2
           args: check
+      - name: Install syft
+        uses: anchore/sbom-action/download-syft@v0.24.3
       - name: Snapshot release
         uses: goreleaser/goreleaser-action@v7
         with:
           distribution: goreleaser
           version: v2.20.2
-          args: release --snapshot --clean
+          # Signing needs the OIDC token of a real release run.
+          args: release --snapshot --clean --skip=sign
         env:
           # The snapshot publishes nothing; the config only needs the variable.
           TAP_GITHUB_TOKEN: unused
