@@ -17,6 +17,11 @@ formula=$(cd "$(dirname "$1")" && pwd)/$(basename "$1")
 tap=local/formula-test
 brew tap-new --no-git "$tap" >/dev/null
 trap 'brew uninstall --force taiga-tui >/dev/null 2>&1 || true; brew untap "$tap" >/dev/null 2>&1 || true' EXIT
+# Homebrew 7 refuses formulae from taps it was not told to trust. Older
+# versions have no such command.
+if brew trust --help >/dev/null 2>&1; then
+  brew trust "$tap"
+fi
 cp "$formula" "$(brew --repository "$tap")/Formula/taiga-tui.rb"
 
 brew style "$tap/taiga-tui"
