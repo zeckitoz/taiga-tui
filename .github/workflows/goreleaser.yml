@@ -36,7 +36,8 @@ jobs:
         with:
           distribution: goreleaser
           version: v2.20.2
-          args: release --snapshot --clean
+          # Signing needs the OIDC token of a real release run.
+          args: release --snapshot --clean --skip=sign
         env:
           # The snapshot publishes nothing; the config only needs the variable.
           TAP_GITHUB_TOKEN: unused

@@ -60,7 +60,7 @@ sboms:
     artifacts: archive
 
 # Keyless cosign signature over checksums.txt (GitHub OIDC), which names every
-# archive and package. Skipped for snapshot builds.
+# archive and package. The snapshot check in CI passes --skip=sign.
 signs:
   - id: checksums
     cmd: cosign
