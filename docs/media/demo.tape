@@ -11,8 +11,9 @@ Set TypingSpeed 80ms
 Hide
 Type "export TERM=xterm-256color; clear" Enter
 Type "/tmp/taiga-demo" Enter
-Show
 Sleep 2s
+Show
+Sleep 1s
 Right 2
 Sleep 700ms
 Down 1
@@ -24,6 +25,7 @@ Type "s"
 Sleep 1200ms
 Screenshot docs/media/status.png
 Escape
-Sleep 600ms
+Sleep 1s
+Hide
 Type "q"
 Sleep 500ms
