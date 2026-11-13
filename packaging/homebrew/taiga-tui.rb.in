@@ -1,0 +1,26 @@
+class TaigaTui < Formula
+  desc "Keyboard-driven terminal UI for Taiga Taskboards and Kanban Boards"
+  homepage "https://github.com/zeckitoz/taiga-tui"
+  url "https://github.com/zeckitoz/taiga-tui/archive/refs/tags/v@VERSION@.tar.gz"
+  sha256 "@SHA256@"
+  license "MIT"
+  head "https://github.com/zeckitoz/taiga-tui.git", branch: "main"
+
+  depends_on "go" => :build
+
+  def install
+    # The same stamp as .goreleaser.yaml. A source tarball has no git
+    # history, so the commit and the date of the tag are rendered in.
+    ldflags = %W[
+      -s -w
+      -X github.com/zeckitoz/taiga-tui/internal/version.version=v#{version}
+      -X github.com/zeckitoz/taiga-tui/internal/version.commit=@COMMIT@
+      -X github.com/zeckitoz/taiga-tui/internal/version.date=@DATE@
+    ]
+    system "go", "build", *std_go_args(ldflags:), "./cmd/taiga-tui"
+  end
+
+  test do
+    assert_match "taiga-tui v#{version}", shell_output("#{bin}/taiga-tui --version")
+  end
+end

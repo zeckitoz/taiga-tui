@@ -81,27 +81,11 @@ changelog:
       - "^Merge pull request"
 
 # Tags with a "-" (v0.4.0-rc.1) are pre-releases. They get a GitHub
-# pre-release and no update of the tap or the bucket.
+# pre-release and no update of the tap or the bucket. The Homebrew formula
+# is not built by GoReleaser, see packaging/homebrew and release.yml.
 release:
   prerelease: auto
   name_template: "{{ .Tag }}"
-
-homebrew_casks:
-  - name: taiga-tui
-    homepage: https://github.com/zeckitoz/taiga-tui
-    description: Keyboard-driven terminal UI for Taiga Taskboards and Kanban Boards
-    skip_upload: auto
-    repository:
-      owner: zeckitoz
-      name: homebrew-tap
-      token: "{{ .Env.TAP_GITHUB_TOKEN }}"
-    # The binary is not notarized, so macOS would quarantine the download.
-    hooks:
-      post:
-        install_steps: |
-          on_macos do
-            run "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "{{ .StagedPath }}/taiga-tui"]
-          end
 
 scoops:
   - name: taiga-tui

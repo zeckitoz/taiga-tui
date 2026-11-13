@@ -43,8 +43,8 @@ jobs:
           # tags on one commit GoReleaser would pick the RC from git describe
           # and try to upload it a second time.
           GORELEASER_CURRENT_TAG: ${{ github.ref_name }}
-          # Writes the Homebrew tap and the Scoop bucket. Tags with a "-" are
-          # pre-releases, which GoReleaser leaves out of both.
+          # Writes the Scoop bucket. Tags with a "-" are pre-releases, which
+          # GoReleaser leaves out.
           TAP_GITHUB_TOKEN: ${{ secrets.TAP_GITHUB_TOKEN }}
       - name: Attest artefacts
         uses: actions/attest-build-provenance@v4
@@ -55,3 +55,78 @@ jobs:
         uses: actions/attest-build-provenance@v4
         with:
           subject-path: dist/checksums.txt
+
+  # The Homebrew formula builds from source, so GoReleaser has nothing to
+  # generate. Render it from packaging/homebrew, prove that it installs on
+  # both platforms, and only then publish it to the tap. Pre-releases skip all
+  # three jobs.
+  formula-render:
+    name: Render formula
+    needs: release
+    if: ${{ !contains(github.ref_name, '-') }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Render
+        run: |
+          date=$(TZ=UTC git show -s --date=format-local:%Y-%m-%dT%H:%M:%SZ --format=%cd HEAD)
+          mkdir formula
+          packaging/homebrew/render.sh "$GITHUB_REF_NAME" "$(git rev-parse HEAD)" "$date" > formula/taiga-tui.rb
+          cat formula/taiga-tui.rb
+      - uses: actions/upload-artifact@v7.0.2
+        with:
+          name: formula
+          path: formula/taiga-tui.rb
+
+  formula-test:
+    name: Formula (${{ matrix.os }})
+    needs: formula-render
+    strategy:
+      fail-fast: true
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v8.0.2
+        with:
+          name: formula
+          path: formula
+      - name: Put Homebrew on the PATH
+        if: runner.os == 'Linux'
+        run: echo /home/linuxbrew/.linuxbrew/bin >> "$GITHUB_PATH"
+      - name: Test formula
+        run: packaging/homebrew/test.sh formula/taiga-tui.rb
+
+  formula-publish:
+    name: Publish formula
+    needs: formula-test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v8.0.2
+        with:
+          name: formula
+          path: formula
+      - uses: actions/checkout@v7
+        with:
+          repository: zeckitoz/homebrew-tap
+          token: ${{ secrets.TAP_GITHUB_TOKEN }}
+          path: tap
+      - name: Commit to the tap
+        working-directory: tap
+        run: |
+          mkdir -p Formula
+          cp ../formula/taiga-tui.rb Formula/taiga-tui.rb
+          # Replaces the cask GoReleaser used to write. Same name, so both
+          # side by side would make `brew install` ambiguous.
+          git rm -q --ignore-unmatch Casks/taiga-tui.rb
+          git add Formula/taiga-tui.rb
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          # A re-run of the same tag has nothing new to commit.
+          if git diff --cached --quiet; then
+            echo "Tap is already up to date."
+            exit 0
+          fi
+          git commit -m "taiga-tui ${GITHUB_REF_NAME#v}"
+          git push

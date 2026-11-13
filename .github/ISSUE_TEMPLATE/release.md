@@ -46,6 +46,6 @@ Run on every system, with the artefacts of the RC:
 - [ ] The Release workflow is green
 - [ ] The GitHub release has generated notes and all artefacts
 - [ ] `gh attestation verify` passes for the final artefacts
-- [ ] The tap and the bucket were updated: `brew install --cask zeckitoz/tap/taiga-tui` and `scoop install taiga-tui` work
+- [ ] The formula jobs of the Release workflow are green and the tap and the bucket were updated: `brew install zeckitoz/tap/taiga-tui` and `scoop install taiga-tui` work
 - [ ] README installation instructions still match the release
 - [ ] Close this issue
