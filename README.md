@@ -13,8 +13,6 @@
   <img src="docs/media/demo.gif" alt="taiga-tui showing a Kanban Board with a detail pane" width="800">
 </p>
 
-The board in the demo shows invented data.
-
 ## Features
 
 - Taskboard and Kanban Board, with Statuses as columns; the Current Sprint opens first.
