@@ -29,6 +29,8 @@ jobs:
           distribution: goreleaser
           version: v2.20.2
           args: check
+      - name: Install syft
+        uses: anchore/sbom-action/download-syft@v0.24.3
       - name: Snapshot release
         uses: goreleaser/goreleaser-action@v7
         with:
