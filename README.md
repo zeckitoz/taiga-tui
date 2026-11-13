@@ -1,15 +1,36 @@
-# taiga-tui
+<h1 align="center">taiga-tui</h1>
 
-A keyboard-driven terminal UI for Taiga Taskboards and Kanban Boards.
+<p align="center">A keyboard-driven terminal UI for Taiga Taskboards and Kanban Boards.</p>
+
+<p align="center">
+  <a href="https://github.com/zeckitoz/taiga-tui/releases/latest"><img alt="Latest Release" src="https://img.shields.io/github/v/release/zeckitoz/taiga-tui"></a>
+  <a href="https://github.com/zeckitoz/taiga-tui/actions/workflows/ci.yml"><img alt="CI" src="https://img.shields.io/github/actions/workflow/status/zeckitoz/taiga-tui/ci.yml?branch=main&label=CI"></a>
+  <a href="go.mod"><img alt="Go version" src="https://img.shields.io/github/go-mod/go-version/zeckitoz/taiga-tui"></a>
+  <a href="LICENSE"><img alt="License: MIT" src="https://img.shields.io/github/license/zeckitoz/taiga-tui"></a>
+</p>
+
+<p align="center">
+  <img src="docs/media/demo.gif" alt="taiga-tui showing a Kanban Board with a detail pane" width="800">
+</p>
+
+The board in the demo shows invented data.
+
+## Features
+
+- Taskboard and Kanban Board, with Statuses as columns; the Current Sprint opens first.
+- Status Change (`s`) and Assign to me (`a`), plus `m` to show only my items.
+- Command menu (`:` or `ctrl+k`) to jump between boards, Sprints and projects.
 
 ## Installation
 
 ### Homebrew (macOS, Linux)
 
 ```sh
+brew trust zeckitoz/tap
 brew install --cask zeckitoz/tap/taiga-tui
 ```
 
+Homebrew 7 ignores casks from taps you have not trusted, hence the first line.
 The cask removes the macOS quarantine flag after the install, so the binary starts without a warning.
 
 ### Scoop (Windows)
@@ -24,8 +45,8 @@ scoop install taiga-tui
 Download the `.deb` or `.rpm` for your architecture from the [latest release](https://github.com/zeckitoz/taiga-tui/releases/latest).
 
 ```sh
-sudo dpkg -i taiga-tui_*_linux_amd64.deb   # Debian, Ubuntu
-sudo rpm -i taiga-tui_*_linux_amd64.rpm    # Fedora, RHEL
+sudo dpkg -i taiga-tui_*_linux_amd64.deb              # Debian, Ubuntu
+sudo dnf install ./taiga-tui_*_linux_amd64.rpm        # Fedora, RHEL
 ```
 
 ### Direct download
@@ -38,6 +59,7 @@ The binaries are not signed, so the systems warn about them:
   Choose "More info", then "Run anyway".
 
 Prefer Homebrew or Scoop, which avoid both warnings.
+To check a download, see [Verifying a download](docs/verifying.md).
 
 ### From source
 
@@ -45,27 +67,13 @@ Prefer Homebrew or Scoop, which avoid both warnings.
 go install github.com/zeckitoz/taiga-tui/cmd/taiga-tui@latest
 ```
 
-## Verifying a download
-
-Every release has a `checksums.txt` with the SHA-256 sums of all artefacts.
-
-```sh
-sha256sum --check --ignore-missing checksums.txt
-```
-
-The artefacts and `checksums.txt` carry GitHub Artifact Attestations, which prove they were built from this repository by the release workflow.
-Verify them with the [GitHub CLI](https://cli.github.com):
-
-```sh
-gh attestation verify taiga-tui_*_linux_amd64.tar.gz --repo zeckitoz/taiga-tui
-gh attestation verify checksums.txt --repo zeckitoz/taiga-tui
-```
-
 ## Usage
 
+Run `taiga-tui` and log in with your Taiga account.
+Press `?` for the full key list.
 Run `taiga-tui --help` for the flags and the location of the config directory.
 
-## Update hint
+### Update hint
 
 At most once a day the app asks GitHub for the latest release in the background.
 If a newer version exists, the status line says so: `vX.Y.Z available - see github.com/zeckitoz/taiga-tui/releases`.
@@ -78,11 +86,27 @@ To turn it off, set this in `config.toml` in the config directory:
 check_updates = false
 ```
 
-## Releasing
+## Under the hood
 
-Tag `vX.Y.Z` to publish.
-Tags containing `-`, like `v0.4.0-rc.1`, make a pre-release that the Homebrew tap and the Scoop bucket ignore.
-Follow the "Release checklist" issue template for every release.
+- [Bubble Tea](https://github.com/charmbracelet/bubbletea): the terminal UI framework.
+- [Lip Gloss](https://github.com/charmbracelet/lipgloss): styling and layout.
+- [Bubbles](https://github.com/charmbracelet/bubbles): the text input.
+- [go-keyring](https://github.com/zalando/go-keyring): stores the login in the system keychain.
+- [BurntSushi/toml](https://github.com/BurntSushi/toml): reads `config.toml`.
+- [vhs](https://github.com/charmbracelet/vhs): records the demo, see [`docs/media/demo.tape`](docs/media/demo.tape).
+- [GoReleaser](https://goreleaser.com): builds the releases, see [Releasing](docs/releasing.md).
+
+## Roadmap
+
+These are ideas, not commitments.
+Open an issue for what you want most.
+
+- Rendered Markdown in User Story and Task descriptions, via [glamour](https://github.com/charmbracelet/glamour).
+- Live updates: see your teammates' changes without reloading.
+- Creating and editing User Stories and Tasks, plus comments.
+- Unassign, the inverse of Assign to me, and undo for a Status Change.
+- Epics and Issues next to User Stories and Tasks.
+- Furthest away: a dedicated `taiga-cli` tool for scripting against the Taiga API.
 
 ## License
 
