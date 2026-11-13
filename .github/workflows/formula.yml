@@ -1,0 +1,37 @@
+name: Formula
+
+# Checks the Homebrew formula template on pull requests that change it, against
+# the latest release, so that a broken formula does not surface at the first tag.
+on:
+  pull_request:
+    paths:
+      - packaging/homebrew/**
+      - .github/workflows/formula.yml
+
+permissions:
+  contents: read
+
+jobs:
+  formula:
+    name: Formula (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v7
+      - name: Put Homebrew on the PATH
+        if: runner.os == 'Linux'
+        run: echo /home/linuxbrew/.linuxbrew/bin >> "$GITHUB_PATH"
+      - name: Render for the latest release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tag=$(gh release view --repo "$GITHUB_REPOSITORY" --json tagName --jq .tagName)
+          commit=$(gh api "repos/$GITHUB_REPOSITORY/commits/$tag" --jq .sha)
+          date=$(gh api "repos/$GITHUB_REPOSITORY/commits/$tag" --jq .commit.committer.date)
+          packaging/homebrew/render.sh "$tag" "$commit" "$date" > taiga-tui.rb
+          cat taiga-tui.rb
+      - name: Test formula
+        run: packaging/homebrew/test.sh taiga-tui.rb
