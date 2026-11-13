@@ -7,7 +7,6 @@
   <a href="https://github.com/zeckitoz/taiga-tui/actions/workflows/ci.yml"><img alt="CI" src="https://img.shields.io/github/actions/workflow/status/zeckitoz/taiga-tui/ci.yml?branch=main&label=CI"></a>
   <a href="go.mod"><img alt="Go version" src="https://img.shields.io/github/go-mod/go-version/zeckitoz/taiga-tui"></a>
   <a href="LICENSE"><img alt="License: MIT" src="https://img.shields.io/github/license/zeckitoz/taiga-tui"></a>
-  <a href="https://goreportcard.com/report/github.com/zeckitoz/taiga-tui"><img alt="Go Report Card" src="https://goreportcard.com/badge/github.com/zeckitoz/taiga-tui"></a>
 </p>
 
 <p align="center">
