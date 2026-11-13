@@ -39,6 +39,10 @@ jobs:
           args: release --clean
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # The release checklist tags vX.Y.Z on the last RC commit. With two
+          # tags on one commit GoReleaser would pick the RC from git describe
+          # and try to upload it a second time.
+          GORELEASER_CURRENT_TAG: ${{ github.ref_name }}
           # Writes the Homebrew tap and the Scoop bucket. Tags with a "-" are
           # pre-releases, which GoReleaser leaves out of both.
           TAP_GITHUB_TOKEN: ${{ secrets.TAP_GITHUB_TOKEN }}
