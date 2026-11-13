@@ -70,7 +70,7 @@ release:
 homebrew_casks:
   - name: taiga-tui
     homepage: https://github.com/zeckitoz/taiga-tui
-    description: Keyboard-driven terminal UI for Taiga Taskboards and Kanban Boards.
+    description: Keyboard-driven terminal UI for Taiga Taskboards and Kanban Boards
     skip_upload: auto
     repository:
       owner: zeckitoz
@@ -87,7 +87,7 @@ homebrew_casks:
 scoops:
   - name: taiga-tui
     homepage: https://github.com/zeckitoz/taiga-tui
-    description: Keyboard-driven terminal UI for Taiga Taskboards and Kanban Boards.
+    description: Keyboard-driven terminal UI for Taiga Taskboards and Kanban Boards
     license: MIT
     skip_upload: auto
     repository:
