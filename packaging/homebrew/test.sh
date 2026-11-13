@@ -14,6 +14,10 @@ if [[ $# -ne 1 ]]; then
 fi
 formula=$(cd "$(dirname "$1")" && pwd)/$(basename "$1")
 
+# CI images ship a stale index and turn auto-update off. A user's brew
+# updates before an install, and an old Go would fail the go.mod check.
+brew update --quiet
+
 tap=local/formula-test
 brew tap-new --no-git "$tap" >/dev/null
 trap 'brew uninstall --force taiga-tui >/dev/null 2>&1 || true; brew untap "$tap" >/dev/null 2>&1 || true' EXIT
