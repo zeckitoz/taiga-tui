@@ -49,6 +49,15 @@ nfpms:
     license: MIT
     maintainer: zeckitoz <noreply@github.com>
     formats: [deb, rpm]
+    # dnf checks the signature of every package (gpgcheck=1). apt checks the
+    # signed repository metadata instead, so the deb files stay unsigned.
+    # nfpm cannot unlock a passphrase-protected subkey, so the release
+    # workflow writes the CI signing subkey, which has no passphrase, to
+    # RPM_SIGNING_KEY_FILE. The snapshot check skips signing, see
+    # .github/workflows/goreleaser.yml.
+    rpm:
+      signature:
+        key_file: "{{ .Env.RPM_SIGNING_KEY_FILE }}"
 
 checksum:
   name_template: checksums.txt
