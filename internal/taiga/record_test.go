@@ -10,13 +10,16 @@ import (
 	"testing"
 	"time"
 
-	"github.com/zeckitoz/taiga-tui/internal/config"
 	"github.com/zeckitoz/taiga-tui/internal/domain"
 	"github.com/zeckitoz/taiga-tui/internal/taiga"
 	"github.com/zeckitoz/taiga-tui/internal/taiga/taigarec"
 )
 
 var record = flag.Bool("record", false, "record the fixtures in testdata from the live Taiga test project")
+
+// defaultLiveURL is the instance of the project test project, used by the
+// recorder and the live smoke test unless TAIGA_TUI_LIVE_URL overrides it.
+const defaultLiveURL = "https://taiga-fki.ostfalia.de"
 
 // TestRecordFixtures replaces the fixtures in testdata with anonymised
 // responses of the live instance. It runs only with -record:
@@ -33,7 +36,7 @@ func TestRecordFixtures(t *testing.T) {
 		t.Skip("records from the live instance only with -record")
 	}
 	user, password, slug := liveEnv(t)
-	instance := config.DefaultInstanceURL
+	instance := defaultLiveURL
 	if u := os.Getenv("TAIGA_TUI_LIVE_URL"); u != "" {
 		instance = u
 	}

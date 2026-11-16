@@ -50,7 +50,7 @@ type StateStore interface {
 
 // Deps wires the App.
 type Deps struct {
-	// Host names the instance in texts, e.g. "taiga-fki.ostfalia.de".
+	// Host names the instance in texts, e.g. "taiga.example.com".
 	Host         string
 	Session      Session
 	Taiga        Taiga

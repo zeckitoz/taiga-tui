@@ -45,7 +45,7 @@ func run(args []string, getenv func(string) string, stdout, stderr io.Writer) in
 		if dir == "" {
 			dir = "unknown, set --config-dir or " + config.EnvConfigDir
 		}
-		fmt.Fprintf(stdout, helpText, config.EnvInstance, config.DefaultInstanceURL, config.EnvConfigDir, dir)
+		fmt.Fprintf(stdout, helpText, config.EnvInstance, config.EnvConfigDir, dir)
 		return 0
 	case cfg.ShowVersion:
 		fmt.Fprintln(stdout, version.Current())
@@ -170,8 +170,8 @@ Usage:
   taiga-tui logout [flags]   Delete the stored login of the instance
 
 Flags:
-  --instance URL     Taiga instance URL (env %s,
-                     default %s)
+  --instance URL     Taiga instance URL, required (env %s,
+                     or instance_url in config.toml)
   --config-dir DIR   Directory for all files of taiga-tui (env %s)
   --debug            Write requests and responses, without tokens and
                      password, to debug.log in the config directory

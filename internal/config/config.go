@@ -19,9 +19,6 @@ import (
 	"github.com/BurntSushi/toml"
 )
 
-// DefaultInstanceURL is the Taiga instance used when nothing else is configured.
-const DefaultInstanceURL = "https://taiga-fki.ostfalia.de"
-
 // Environment variables read by Resolve.
 const (
 	EnvInstance  = "TAIGA_TUI_INSTANCE"
@@ -51,7 +48,7 @@ type Config struct {
 	Debug bool
 }
 
-// Host returns the host of InstanceURL, e.g. "taiga-fki.ostfalia.de". It
+// Host returns the host of InstanceURL, e.g. "taiga.example.com". It
 // names the instance in texts and in the keys of stored tokens.
 func (c Config) Host() string {
 	u, err := url.Parse(c.InstanceURL)
@@ -67,7 +64,8 @@ type Warning string
 // Resolve resolves the configuration from the command line arguments (without
 // the program name) and the environment, read through getenv.
 //
-// A missing config.toml is fine, and unknown keys in it become warnings.
+// An instance is required: without one from flag, environment or config.toml,
+// the error is a *NoInstanceError. A missing config.toml is fine, and unknown keys in it become warnings.
 // With --help or --version, config.toml is not read, so a broken file or
 // environment never hides the help or the version. Only ConfigDir is resolved
 // then, and it is empty if it cannot be determined.
@@ -78,7 +76,6 @@ func Resolve(args []string, getenv func(string) string) (Config, []Warning, erro
 	}
 	dir, err := configDir(fl.configDir, getenv)
 	cfg := Config{
-		InstanceURL:  DefaultInstanceURL,
 		ConfigDir:    dir,
 		CheckUpdates: true,
 		ShowHelp:     fl.help,
@@ -100,7 +97,7 @@ func Resolve(args []string, getenv func(string) string) (Config, []Warning, erro
 	if f.CheckUpdates != nil {
 		cfg.CheckUpdates = *f.CheckUpdates
 	}
-	instance, source := DefaultInstanceURL, "default"
+	var instance, source string
 	switch {
 	case fl.instance != "":
 		instance, source = fl.instance, "--instance"
@@ -108,12 +105,28 @@ func Resolve(args []string, getenv func(string) string) (Config, []Warning, erro
 		instance, source = getenv(EnvInstance), EnvInstance
 	case f.InstanceURL != nil:
 		instance, source = *f.InstanceURL, "instance_url in "+FileName
+	default:
+		return Config{}, nil, &NoInstanceError{ConfigFile: filepath.Join(dir, FileName)}
 	}
 	cfg.InstanceURL, err = normalizeInstanceURL(instance)
 	if err != nil {
 		return Config{}, nil, fmt.Errorf("invalid instance URL from %s: %w", source, err)
 	}
 	return cfg, warnings, nil
+}
+
+// NoInstanceError reports that no Taiga instance is configured. There is no
+// default, so the Team Member has to choose one.
+type NoInstanceError struct {
+	// ConfigFile is the path of the config.toml that may hold instance_url.
+	ConfigFile string
+}
+
+func (e *NoInstanceError) Error() string {
+	return fmt.Sprintf(`no Taiga instance configured.
+Set one with --instance URL, the %s environment variable,
+or instance_url in %s, e.g.
+  taiga-tui --instance https://taiga.example.com`, EnvInstance, e.ConfigFile)
 }
 
 // UsageError reports invalid command line arguments.
