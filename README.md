@@ -54,9 +54,7 @@ sudo curl -fsSL https://zeckitoz.github.io/linux-repo/taiga-tui.sources -o /etc/
 sudo apt update && sudo apt install taiga-tui
 ```
 
-`apt upgrade` then delivers new releases.
-The file carries the signing key, so apt 2.4 or newer is needed (Debian 12, Ubuntu 22.04).
-For older systems see [docs/linux-repository.md](docs/linux-repository.md).
+Needs apt 2.4 or newer (Debian 12, Ubuntu 22.04), older systems: see [docs/linux-repository.md](docs/linux-repository.md).
 
 ### Fedora and RHEL (dnf)
 
@@ -65,12 +63,8 @@ sudo curl -fsSL https://zeckitoz.github.io/linux-repo/taiga-tui.repo -o /etc/yum
 sudo dnf install taiga-tui
 ```
 
-Both repositories are signed with the key `15C9 7F1D 1B65 AFBE C60B 8E30 2DD3 5918 1160 D21C`.
-Check it with `curl -fsSL https://zeckitoz.github.io/linux-repo/taiga-tui.asc | gpg --show-keys` before you trust it.
-[docs/linux-repository.md](docs/linux-repository.md) explains how the repository and the key work.
-
-You can also download the `.deb` or `.rpm` from the [latest release](https://github.com/zeckitoz/taiga-tui/releases/latest) and install it by hand with `dpkg -i` or `dnf install ./file.rpm`.
-Those files get no updates.
+Both repositories are GPG-signed, see [docs/linux-repository.md](docs/linux-repository.md) for the key.
+The `.deb` and `.rpm` files on the [releases page](https://github.com/zeckitoz/taiga-tui/releases/latest) get no updates.
 
 ### Direct download
 

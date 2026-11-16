@@ -5,6 +5,11 @@ Nobody edits it by hand.
 The Release workflow rebuilds it for every stable tag, after the GitHub release exists.
 Tags with a `-` (pre-releases) skip it.
 
+> [!IMPORTANT]
+> Both repositories are signed with the primary key `15C97F1D1B65AFBEC60B8E302DD359181160D21C`.
+> Check the key before you trust it: `curl -fsSL https://zeckitoz.github.io/linux-repo/taiga-tui.asc | gpg --show-keys`.
+> You may be asked to confirm the import of the key during installation.
+
 ## How it works
 
 The job `linux-repo` in `.github/workflows/release.yml` downloads the `.deb` and `.rpm` files of the release and runs `packaging/linux/build-repo.sh`.
