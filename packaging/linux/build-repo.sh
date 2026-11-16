@@ -16,6 +16,10 @@
 #   dists/stable/...                     apt metadata, InRelease is signed
 #   rpm/*.rpm, rpm/repodata/...          rpm packages and metadata,
 #                                        repomd.xml.asc is signed
+#   taiga-tui.sources, taiga-tui.repo    ready-made config for apt and dnf, so
+#                                        users download one file each
+#
+# REPO_URL is the public URL of the repository, default GitHub Pages.
 set -euo pipefail
 
 if [[ $# -ne 2 ]]; then
@@ -27,6 +31,7 @@ fi
 repo=$(cd "$1" && pwd)
 pkgs=$(cd "$2" && pwd)
 archs=(amd64 arm64)
+base=${REPO_URL:-https://zeckitoz.github.io/linux-repo}
 suite=stable
 
 # The trailing ! makes gpg use exactly this subkey.
@@ -68,3 +73,27 @@ apt-ftparchive \
 rm -rf rpm/repodata
 createrepo_c --quiet rpm
 "${sign[@]}" --armor --detach-sign --output rpm/repodata/repomd.xml.asc rpm/repodata/repomd.xml
+
+# Ready-made config. The apt file carries the public key inline in Signed-By
+# (deb822 format): an empty line of the armor becomes " .".
+key="$repo/taiga-tui.asc"
+[[ -f "$key" ]] || { echo "missing $key" >&2; exit 1; }
+{
+  cat <<EOF
+Types: deb
+URIs: $base
+Suites: $suite
+Components: main
+Signed-By:
+EOF
+  sed -e 's/^$/./' -e 's/^/ /' "$key"
+} >taiga-tui.sources
+cat >taiga-tui.repo <<EOF
+[taiga-tui]
+name=taiga-tui
+baseurl=$base/rpm
+enabled=1
+gpgcheck=1
+repo_gpgcheck=1
+gpgkey=$base/taiga-tui.asc
+EOF

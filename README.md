@@ -32,14 +32,6 @@ Homebrew 7 ignores formulae from taps you have not trusted, hence the first line
 The formula builds taiga-tui from source with Go, which Homebrew installs as a build dependency.
 A binary built on your machine starts without any macOS warning.
 
-Up to v0.1.0 the tap shipped a cask.
-If you installed that one, switch once:
-
-```sh
-brew uninstall --cask taiga-tui
-brew install zeckitoz/tap/taiga-tui
-```
-
 ### Scoop (Windows)
 
 ```powershell
@@ -49,38 +41,22 @@ scoop install taiga-tui
 
 ### Debian and Ubuntu (apt)
 
-Add the repository once.
-`apt upgrade` then delivers new releases.
-
 ```sh
-sudo install -d -m 0755 /etc/apt/keyrings
-sudo curl -fsSL https://zeckitoz.github.io/linux-repo/taiga-tui.asc -o /etc/apt/keyrings/taiga-tui.asc
-echo "deb [signed-by=/etc/apt/keyrings/taiga-tui.asc] https://zeckitoz.github.io/linux-repo stable main" | sudo tee /etc/apt/sources.list.d/taiga-tui.list
-sudo apt update
-sudo apt install taiga-tui
+sudo curl -fsSL https://zeckitoz.github.io/linux-repo/taiga-tui.sources -o /etc/apt/sources.list.d/taiga-tui.sources
+sudo apt update && sudo apt install taiga-tui
 ```
+
+Needs apt 2.4 or newer (Debian 12, Ubuntu 22.04), older systems: see [docs/linux-repository.md](docs/linux-repository.md).
 
 ### Fedora and RHEL (dnf)
 
 ```sh
-sudo tee /etc/yum.repos.d/taiga-tui.repo >/dev/null <<'EOF'
-[taiga-tui]
-name=taiga-tui
-baseurl=https://zeckitoz.github.io/linux-repo/rpm
-enabled=1
-gpgcheck=1
-repo_gpgcheck=1
-gpgkey=https://zeckitoz.github.io/linux-repo/taiga-tui.asc
-EOF
+sudo curl -fsSL https://zeckitoz.github.io/linux-repo/taiga-tui.repo -o /etc/yum.repos.d/taiga-tui.repo
 sudo dnf install taiga-tui
 ```
 
-Both repositories are signed with the key `15C9 7F1D 1B65 AFBE C60B 8E30 2DD3 5918 1160 D21C`.
-Check it with `gpg --show-keys taiga-tui.asc` before you trust it.
-[docs/linux-repository.md](docs/linux-repository.md) explains how the repository and the key work.
-
-You can also download the `.deb` or `.rpm` from the [latest release](https://github.com/zeckitoz/taiga-tui/releases/latest) and install it by hand with `dpkg -i` or `dnf install ./file.rpm`.
-Those files get no updates.
+Both repositories are GPG-signed, see [docs/linux-repository.md](docs/linux-repository.md) for the key.
+The `.deb` and `.rpm` files on the [releases page](https://github.com/zeckitoz/taiga-tui/releases/latest) get no updates.
 
 ### Direct download
 
