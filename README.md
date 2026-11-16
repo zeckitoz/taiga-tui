@@ -32,14 +32,6 @@ Homebrew 7 ignores formulae from taps you have not trusted, hence the first line
 The formula builds taiga-tui from source with Go, which Homebrew installs as a build dependency.
 A binary built on your machine starts without any macOS warning.
 
-Up to v0.1.0 the tap shipped a cask.
-If you installed that one, switch once:
-
-```sh
-brew uninstall --cask taiga-tui
-brew install zeckitoz/tap/taiga-tui
-```
-
 ### Scoop (Windows)
 
 ```powershell
