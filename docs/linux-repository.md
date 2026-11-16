@@ -17,11 +17,27 @@ It needs no database.
 | `dists/stable/` | apt metadata, `InRelease` and `Release.gpg` are signed |
 | `rpm/*.rpm`, `rpm/repodata/` | rpm packages and metadata, `repomd.xml.asc` is signed |
 | `taiga-tui.asc` | the public key |
+| `taiga-tui.sources`, `taiga-tui.repo` | ready-made config for apt and dnf, written by the script |
 
 apt trusts the signed `Release` file, which names the hash of every metadata file and, through them, every package.
 dnf checks the signature of the metadata (`repo_gpgcheck=1`) and of every package (`gpgcheck=1`).
 The rpm files are signed by GoReleaser (nfpm) inside the release run, so `checksums.txt`, the cosign signature and the attestations cover the signed files.
 The deb files stay unsigned, as apt does not need it.
+
+## Config files
+
+The README tells users to download one file each: `taiga-tui.sources` for apt and `taiga-tui.repo` for dnf.
+The script writes both on every run, so the key in the apt file always matches `taiga-tui.asc`.
+The apt file has the key inline in `Signed-By`, which apt supports from 2.4 (Debian 12, Ubuntu 22.04).
+Older apt, for example Ubuntu 20.04, rejects it with `Invalid value set for option Signed-By`.
+Use the long form there:
+
+```sh
+sudo install -d -m 0755 /etc/apt/keyrings
+sudo curl -fsSL https://zeckitoz.github.io/linux-repo/taiga-tui.asc -o /etc/apt/keyrings/taiga-tui.asc
+echo "deb [signed-by=/etc/apt/keyrings/taiga-tui.asc] https://zeckitoz.github.io/linux-repo stable main" | sudo tee /etc/apt/sources.list.d/taiga-tui.list
+sudo apt update && sudo apt install taiga-tui
+```
 
 ## Keys
 
