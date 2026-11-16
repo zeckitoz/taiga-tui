@@ -78,7 +78,21 @@ go install github.com/zeckitoz/taiga-tui/cmd/taiga-tui@latest
 
 ## Usage
 
-Run `taiga-tui` and log in with your Taiga account.
+taiga-tui works with any Taiga instance, but it has no default, so tell it which one to use.
+Pass it once with the `--instance` flag:
+
+```sh
+taiga-tui --instance https://taiga.example.com
+```
+
+Or make it permanent, with the `TAIGA_TUI_INSTANCE` environment variable or `instance_url` in `config.toml` in the config directory:
+
+```toml
+instance_url = "https://taiga.example.com"
+```
+
+The flag beats the environment variable, which beats `config.toml`.
+Then log in with your Taiga account.
 Press `?` for the full key list.
 Run `taiga-tui --help` for the flags and the location of the config directory.
 

@@ -42,6 +42,12 @@ _Avoid_: Column, Spalte, state, lane
 Moving a User Story or Task to a different Status.
 _Avoid_: Drag, move, transition
 
+### Connection
+
+**Instance**:
+A Taiga server that a Team Member connects to, identified by its URL. There is no default Instance; the Team Member chooses one.
+_Avoid_: Server, host, deployment
+
 ### People
 
 **Team Member**:

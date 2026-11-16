@@ -10,7 +10,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/zeckitoz/taiga-tui/internal/config"
 	"github.com/zeckitoz/taiga-tui/internal/domain"
 	"github.com/zeckitoz/taiga-tui/internal/taiga"
 )
@@ -42,7 +41,7 @@ type api interface {
 // docs/test-project.md for the test project.
 func TestLiveSmoke(t *testing.T) {
 	user, password, slug := liveSmokeEnv(t)
-	instance := config.DefaultInstanceURL
+	instance := defaultLiveURL
 	if u := os.Getenv("TAIGA_TUI_LIVE_URL"); u != "" {
 		instance = u
 	}

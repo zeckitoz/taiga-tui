@@ -26,6 +26,12 @@ type result struct {
 	stdout, stderr string
 }
 
+// withInstance is the environment of a run with a config directory and an
+// instance, which taiga-tui requires.
+func withInstance(dir string) map[string]string {
+	return map[string]string{"TAIGA_TUI_CONFIG_DIR": dir, "TAIGA_TUI_INSTANCE": "https://taiga.example.com"}
+}
+
 func runWith(t *testing.T, env map[string]string, args ...string) result {
 	t.Helper()
 	var stdout, stderr bytes.Buffer
@@ -59,8 +65,8 @@ Usage:
   taiga-tui logout [flags]   Delete the stored login of the instance
 
 Flags:
-  --instance URL     Taiga instance URL (env TAIGA_TUI_INSTANCE,
-                     default https://taiga-fki.ostfalia.de)
+  --instance URL     Taiga instance URL, required (env TAIGA_TUI_INSTANCE,
+                     or instance_url in config.toml)
   --config-dir DIR   Directory for all files of taiga-tui (env TAIGA_TUI_CONFIG_DIR)
   --debug            Write requests and responses, without tokens and
                      password, to debug.log in the config directory
@@ -103,7 +109,7 @@ func TestBrokenConfigFileExitsWithError(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	got := runWith(t, map[string]string{"TAIGA_TUI_CONFIG_DIR": dir})
+	got := runWith(t, withInstance(dir))
 
 	if got.code != 1 {
 		t.Errorf("exit code %d, want 1", got.code)
@@ -120,12 +126,12 @@ func TestStartRunsTUIWithWarningsAndState(t *testing.T) {
 	var got ui.Deps
 	stubTUI(t, func(d ui.Deps) error { got = d; return nil })
 
-	res := runWith(t, map[string]string{"TAIGA_TUI_CONFIG_DIR": dir})
+	res := runWith(t, withInstance(dir))
 
 	if res.code != 0 || res.stdout != "" || res.stderr != "" {
 		t.Fatalf("exit %d, stdout %q, stderr %q", res.code, res.stdout, res.stderr)
 	}
-	if got.Host != "taiga-fki.ostfalia.de" {
+	if got.Host != "taiga.example.com" {
 		t.Errorf("host %q", got.Host)
 	}
 	if got.Session == nil || got.Taiga == nil {
@@ -145,7 +151,7 @@ func TestStartPassesCorruptStateWarning(t *testing.T) {
 	var got ui.Deps
 	stubTUI(t, func(d ui.Deps) error { got = d; return nil })
 
-	runWith(t, map[string]string{"TAIGA_TUI_CONFIG_DIR": dir})
+	runWith(t, withInstance(dir))
 
 	if want := []config.Warning{"state.json is corrupt, using defaults"}; !slices.Equal(got.Warnings, want) {
 		t.Errorf("warnings %q, want %q", got.Warnings, want)
@@ -155,7 +161,7 @@ func TestStartPassesCorruptStateWarning(t *testing.T) {
 func TestTUIFailureExitsWithError(t *testing.T) {
 	stubTUI(t, func(ui.Deps) error { return errors.New("no tty") })
 
-	res := runWith(t, map[string]string{"TAIGA_TUI_CONFIG_DIR": t.TempDir()})
+	res := runWith(t, withInstance(t.TempDir()))
 
 	if res.code != 1 || res.stderr != "taiga-tui: no tty\n" {
 		t.Errorf("exit %d, stderr %q", res.code, res.stderr)
@@ -203,11 +209,12 @@ func TestLogoutDeletesTokensOnlyAndDoesNotStartTUI(t *testing.T) {
 func TestLogoutWithoutStateStillClearsCredentialsFile(t *testing.T) {
 	keyring.MockInit()
 	dir := t.TempDir()
-	writeFile(t, dir, "credentials", `{"taiga-fki.ostfalia.de/alice/refresh": "tok"}`)
+	writeFile(t, dir, "config.toml", "instance_url = \"https://taiga.example.com\"\n")
+	writeFile(t, dir, "credentials", `{"taiga.example.com/alice/refresh": "tok"}`)
 
-	res := runWith(t, map[string]string{"TAIGA_TUI_CONFIG_DIR": dir}, "logout")
+	res := runWith(t, withInstance(dir), "logout")
 
-	if res.code != 0 || res.stdout != "Logged out of taiga-fki.ostfalia.de.\n" {
+	if res.code != 0 || res.stdout != "Logged out of taiga.example.com.\n" {
 		t.Errorf("exit %d, stdout %q, stderr %q", res.code, res.stdout, res.stderr)
 	}
 	if _, err := os.Stat(filepath.Join(dir, "credentials")); !errors.Is(err, os.ErrNotExist) {
@@ -220,7 +227,7 @@ func TestLogoutReportsKeyringFailure(t *testing.T) {
 	dir := t.TempDir()
 	writeFile(t, dir, "state.json", `{"user_id": 42, "username": "alice"}`)
 
-	res := runWith(t, map[string]string{"TAIGA_TUI_CONFIG_DIR": dir}, "logout")
+	res := runWith(t, withInstance(dir), "logout")
 
 	if res.code != 1 || !strings.Contains(res.stderr, "secret service not running") {
 		t.Errorf("exit %d, stderr %q", res.code, res.stderr)
@@ -286,7 +293,7 @@ func TestWithoutDebugNothingIsLogged(t *testing.T) {
 	var deps ui.Deps
 	stubTUI(t, func(d ui.Deps) error { deps = d; return nil })
 
-	runWith(t, map[string]string{"TAIGA_TUI_CONFIG_DIR": dir})
+	runWith(t, withInstance(dir))
 
 	if deps.DebugLog != "" {
 		t.Errorf("Deps.DebugLog %q", deps.DebugLog)
@@ -303,7 +310,7 @@ func TestDebugLogThatCannotBeOpenedExitsWithError(t *testing.T) {
 	}
 	stubTUI(t, func(ui.Deps) error { t.Error("TUI started"); return nil })
 
-	res := runWith(t, map[string]string{"TAIGA_TUI_CONFIG_DIR": dir}, "--debug")
+	res := runWith(t, withInstance(dir), "--debug")
 
 	if res.code != 1 || !strings.Contains(res.stderr, "debug.log") {
 		t.Errorf("exit %d, stderr %q", res.code, res.stderr)
@@ -316,7 +323,7 @@ func TestPanicWritesCrashLogAndExitsWithOne(t *testing.T) {
 	dir := t.TempDir()
 	stubTUI(t, func(ui.Deps) error { panic("kaboom with token " + fakeJWT) })
 
-	res := runWith(t, map[string]string{"TAIGA_TUI_CONFIG_DIR": dir})
+	res := runWith(t, withInstance(dir))
 
 	logPath := filepath.Join(dir, "crash.log")
 	if res.code != 1 {
@@ -349,7 +356,7 @@ func TestCrashReportedByTUIWritesCrashLog(t *testing.T) {
 		return &crash.Error{Value: "from a command", Stack: []byte("goroutine 7 [running]:\nmain.work()\n")}
 	})
 
-	res := runWith(t, map[string]string{"TAIGA_TUI_CONFIG_DIR": dir})
+	res := runWith(t, withInstance(dir))
 
 	if res.code != 1 || !strings.HasPrefix(res.stderr, "taiga-tui crashed. Details written to ") {
 		t.Errorf("exit %d, stderr %q", res.code, res.stderr)
@@ -362,7 +369,7 @@ func TestCrashReportedByTUIWritesCrashLog(t *testing.T) {
 
 func TestCrashLogIsOverwritten(t *testing.T) {
 	dir := t.TempDir()
-	env := map[string]string{"TAIGA_TUI_CONFIG_DIR": dir}
+	env := withInstance(dir)
 	stubTUI(t, func(ui.Deps) error { panic("first crash") })
 	runWith(t, env)
 	stubTUI(t, func(ui.Deps) error { panic("second crash") })
@@ -385,7 +392,7 @@ func TestCrashLogThatCannotBeWrittenStillReportsThePanic(t *testing.T) {
 	}
 	stubTUI(t, func(ui.Deps) error { panic("kaboom") })
 
-	res := runWith(t, map[string]string{"TAIGA_TUI_CONFIG_DIR": dir})
+	res := runWith(t, withInstance(dir))
 
 	if res.code != 1 || !strings.Contains(res.stderr, "taiga-tui crashed") || !strings.Contains(res.stderr, "kaboom") {
 		t.Errorf("exit %d, stderr %q", res.code, res.stderr)
@@ -409,7 +416,7 @@ func TestUpdateCheckIsWiredUnlessConfigTurnsItOff(t *testing.T) {
 			var got ui.Deps
 			stubTUI(t, func(d ui.Deps) error { got = d; return nil })
 
-			res := runWith(t, map[string]string{"TAIGA_TUI_CONFIG_DIR": dir})
+			res := runWith(t, withInstance(dir))
 
 			if res.code != 0 {
 				t.Fatalf("exit %d, stderr %q", res.code, res.stderr)
@@ -421,5 +428,22 @@ func TestUpdateCheckIsWiredUnlessConfigTurnsItOff(t *testing.T) {
 				t.Errorf("Version = %q, want %q", got.Version, version.Current().Version)
 			}
 		})
+	}
+}
+
+func TestMissingInstanceExitsWithHintAndDoesNotStart(t *testing.T) {
+	for _, args := range [][]string{nil, {"logout"}} {
+		dir := t.TempDir()
+		stubTUI(t, func(ui.Deps) error { t.Error("started the TUI without an instance"); return nil })
+
+		res := runWith(t, map[string]string{"TAIGA_TUI_CONFIG_DIR": dir}, args...)
+
+		want := "taiga-tui: no Taiga instance configured.\n" +
+			"Set one with --instance URL, the TAIGA_TUI_INSTANCE environment variable,\n" +
+			"or instance_url in " + filepath.Join(dir, "config.toml") + ", e.g.\n" +
+			"  taiga-tui --instance https://taiga.example.com\n"
+		if res.code != 1 || res.stdout != "" || res.stderr != want {
+			t.Errorf("%v: exit %d, stdout %q, stderr %q", args, res.code, res.stdout, res.stderr)
+		}
 	}
 }

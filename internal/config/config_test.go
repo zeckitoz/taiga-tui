@@ -13,7 +13,7 @@ import (
 
 func TestResolveDefaultsWithoutConfigFile(t *testing.T) {
 	dir := t.TempDir()
-	env := envMap{"TAIGA_TUI_CONFIG_DIR": dir}
+	env := envMap{"TAIGA_TUI_CONFIG_DIR": dir, "TAIGA_TUI_INSTANCE": "https://taiga.example.org"}
 
 	cfg, warnings, err := config.Resolve(nil, env.Get)
 
@@ -24,7 +24,7 @@ func TestResolveDefaultsWithoutConfigFile(t *testing.T) {
 		t.Errorf("unexpected warnings: %v", warnings)
 	}
 	want := config.Config{
-		InstanceURL:  "https://taiga-fki.ostfalia.de",
+		InstanceURL:  "https://taiga.example.org",
 		ConfigDir:    dir,
 		CheckUpdates: true,
 	}
@@ -49,7 +49,6 @@ func TestResolveInstanceURLPrecedence(t *testing.T) {
 		{name: "flag beats env and file", flag: fromFlag, env: fromEnv, file: fromFile, want: fromFlag},
 		{name: "env beats file", env: fromEnv, file: fromFile, want: fromEnv},
 		{name: "file beats default", file: fromFile, want: fromFile},
-		{name: "default", want: "https://taiga-fki.ostfalia.de"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -72,6 +71,21 @@ func TestResolveInstanceURLPrecedence(t *testing.T) {
 				t.Errorf("got %q, want %q", cfg.InstanceURL, tt.want)
 			}
 		})
+	}
+}
+
+func TestResolveWithoutInstanceFails(t *testing.T) {
+	dir := t.TempDir()
+	env := envMap{"TAIGA_TUI_CONFIG_DIR": dir}
+
+	_, _, err := config.Resolve(nil, env.Get)
+
+	var noInstance *config.NoInstanceError
+	if !errors.As(err, &noInstance) {
+		t.Fatalf("got %v, want a *NoInstanceError", err)
+	}
+	if want := filepath.Join(dir, "config.toml"); noInstance.ConfigFile != want {
+		t.Errorf("config file %q, want %q", noInstance.ConfigFile, want)
 	}
 }
 
@@ -101,7 +115,7 @@ func TestResolveConfigDirIsMadeAbsolute(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	cfg, _, err := config.Resolve([]string{"--config-dir", "rel"}, envMap{}.Get)
+	cfg, _, err := config.Resolve([]string{"--config-dir", "rel", "--instance", "https://taiga.example.org"}, envMap{}.Get)
 
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -173,7 +187,7 @@ func TestDefaultConfigDirFailsWithoutHome(t *testing.T) {
 
 func TestResolveUsesDefaultConfigDir(t *testing.T) {
 	root := t.TempDir()
-	env := envMap{"HOME": root, "XDG_CONFIG_HOME": root, "AppData": root}
+	env := envMap{"HOME": root, "XDG_CONFIG_HOME": root, "AppData": root, "TAIGA_TUI_INSTANCE": "https://taiga.example.org"}
 
 	cfg, _, err := config.Resolve(nil, env.Get)
 
@@ -187,7 +201,7 @@ func TestResolveUsesDefaultConfigDir(t *testing.T) {
 
 func TestResolveReadsCheckUpdates(t *testing.T) {
 	dir := t.TempDir()
-	writeConfig(t, dir, "check_updates = false\n")
+	writeConfig(t, dir, "instance_url = \"https://taiga.example.org\"\ncheck_updates = false\n")
 
 	cfg, _, err := config.Resolve([]string{"--config-dir", dir}, envMap{}.Get)
 
@@ -363,7 +377,7 @@ func TestResolveLogoutSubcommand(t *testing.T) {
 					args[i] = dir
 				}
 			}
-			env := envMap{"TAIGA_TUI_CONFIG_DIR": dir}
+			env := envMap{"TAIGA_TUI_CONFIG_DIR": dir, "TAIGA_TUI_INSTANCE": "https://env.example.org"}
 
 			cfg, _, err := config.Resolve(args, env.Get)
 
@@ -394,7 +408,7 @@ func TestResolveRejectsArgumentsAfterLogout(t *testing.T) {
 }
 
 func TestResolveDebugFlag(t *testing.T) {
-	env := envMap{"TAIGA_TUI_CONFIG_DIR": t.TempDir()}
+	env := envMap{"TAIGA_TUI_CONFIG_DIR": t.TempDir(), "TAIGA_TUI_INSTANCE": "https://taiga.example.org"}
 
 	off, _, err := config.Resolve(nil, env.Get)
 	if err != nil || off.Debug {
