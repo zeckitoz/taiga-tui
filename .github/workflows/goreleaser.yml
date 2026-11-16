@@ -41,3 +41,4 @@ jobs:
         env:
           # The snapshot publishes nothing; the config only needs the variable.
           TAP_GITHUB_TOKEN: unused
+          RPM_SIGNING_KEY_FILE: unused

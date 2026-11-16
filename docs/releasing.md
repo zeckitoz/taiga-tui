@@ -18,3 +18,9 @@ To run the test yourself, use a container, because it installs `taiga-tui` into 
 ```sh
 docker run --rm -v "$PWD":/src:ro homebrew/brew bash -c '/src/packaging/homebrew/test.sh /path/to/rendered/taiga-tui.rb'
 ```
+
+## Linux repository
+
+Stable tags also publish the `.deb` and `.rpm` files to the signed apt and rpm repository, see [linux-repository.md](linux-repository.md).
+The rpm files are signed during the GoReleaser run with the secret `GPG_PRIVATE_KEY`.
+Pre-releases skip the repository.
