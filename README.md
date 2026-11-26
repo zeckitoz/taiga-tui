@@ -93,6 +93,7 @@ instance_url = "https://taiga.example.com"
 
 The flag beats the environment variable, which beats `config.toml`.
 Then log in with your Taiga account.
+If the web UI of the instance logs in through LDAP, for example with university accounts, taiga-tui does the same.
 Press `?` for the full key list.
 Run `taiga-tui --help` for the flags and the location of the config directory.
 

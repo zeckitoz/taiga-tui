@@ -56,9 +56,14 @@ type loginResponse struct {
 	Refresh         string `json:"refresh"`
 }
 
-// Login logs in with a Taiga username or email address and a password.
+// Login logs in with a Taiga username or email address and a password, using
+// the login type of the instance's web UI.
 func (a *AuthAPI) Login(ctx context.Context, username, password string) (LoginResult, error) {
-	code, data, err := a.post(ctx, "/auth", loginRequest{Type: "normal", Username: username, Password: password})
+	loginType, err := a.loginType(ctx)
+	if err != nil {
+		return LoginResult{}, err
+	}
+	code, data, err := a.post(ctx, "/auth", loginRequest{Type: loginType, Username: username, Password: password})
 	if err == nil {
 		err = authStatusError(code, data, ErrInvalidCredentials, password)
 	}
@@ -81,6 +86,35 @@ func (a *AuthAPI) Login(ctx context.Context, username, password string) (LoginRe
 		Member: domain.TeamMember{ID: lr.ID, Username: lr.Username, FullName: name},
 		Tokens: Tokens{Access: lr.AuthToken, Refresh: lr.Refresh},
 	}, nil
+}
+
+// webUIConf is the part of the web UI's conf.json that taiga-tui reads.
+type webUIConf struct {
+	LoginFormType string `json:"loginFormType"`
+}
+
+// loginType returns "ldap" if the instance's web UI logs in through the LDAP
+// plugin (taiga-contrib-ldap-auth-ext), which accepts LDAP and normal
+// accounts, else "normal". A missing or unreadable conf.json means "normal";
+// only a failure to reach the instance is an error.
+func (a *AuthAPI) loginType(ctx context.Context) (string, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, a.baseURL+"/conf.json", nil)
+	if err != nil {
+		return "", err
+	}
+	req.Header.Set("Accept", "application/json")
+
+	resp, err := a.http.Do(req)
+	if err != nil {
+		return "", transportError(err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	var conf webUIConf
+	if resp.StatusCode == http.StatusOK && json.NewDecoder(resp.Body).Decode(&conf) == nil && conf.LoginFormType == "ldap" {
+		return "ldap", nil
+	}
+	return "normal", nil
 }
 
 type refreshRequest struct {

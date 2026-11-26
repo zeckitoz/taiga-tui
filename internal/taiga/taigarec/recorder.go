@@ -34,11 +34,12 @@ func NewRecorder(base http.RoundTripper) *Recorder {
 	return &Recorder{base: base}
 }
 
-// RoundTrip implements http.RoundTripper.
+// RoundTrip implements http.RoundTripper. The web UI's conf.json, which Login
+// reads for the login type, is passed through without being captured.
 func (r *Recorder) RoundTrip(req *http.Request) (*http.Response, error) {
 	resp, err := r.base.RoundTrip(req)
-	if err != nil {
-		return nil, err
+	if err != nil || req.URL.Path == "/conf.json" {
+		return resp, err
 	}
 	body, err := io.ReadAll(resp.Body)
 	_ = resp.Body.Close()
