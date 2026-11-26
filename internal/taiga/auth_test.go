@@ -19,6 +19,10 @@ import (
 func TestLoginSendsNormalLoginAndReturnsMemberAndTokens(t *testing.T) {
 	var got map[string]string
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/conf.json" {
+			http.NotFound(w, r)
+			return
+		}
 		if r.Method != http.MethodPost || r.URL.Path != "/api/v1/auth" {
 			t.Errorf("unexpected request %s %s", r.Method, r.URL.Path)
 		}
@@ -47,6 +51,44 @@ func TestLoginSendsNormalLoginAndReturnsMemberAndTokens(t *testing.T) {
 	}
 	if res != wantRes {
 		t.Errorf("got  %+v\nwant %+v", res, wantRes)
+	}
+}
+
+func TestLoginUsesTheLoginTypeOfTheWebUIConf(t *testing.T) {
+	tests := []struct {
+		name     string
+		conf     string
+		wantType string
+	}{
+		{name: "ldap", conf: `{"api": "x", "loginFormType": "ldap"}`, wantType: "ldap"},
+		{name: "no login form type", conf: `{"api": "x"}`, wantType: "normal"},
+		{name: "unknown login form type", conf: `{"loginFormType": "saml"}`, wantType: "normal"},
+		{name: "not JSON", conf: `<html></html>`, wantType: "normal"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var got map[string]string
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if r.Method == http.MethodGet && r.URL.Path == "/conf.json" {
+					_, _ = w.Write([]byte(tt.conf))
+					return
+				}
+				if err := json.NewDecoder(r.Body).Decode(&got); err != nil {
+					t.Error(err)
+				}
+				writeFixture(t, w, "login.json")
+			}))
+			defer srv.Close()
+
+			_, err := taiga.NewAuthAPI(srv.URL).Login(t.Context(), "alice", "pw")
+
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if got["type"] != tt.wantType {
+				t.Errorf("login type %q, want %q", got["type"], tt.wantType)
+			}
+		})
 	}
 }
 
